@@ -28,6 +28,9 @@ Decimal       [1-9][0-9]*
 Octal         0[0-7]*
 Hexadecimal   0[xX][0-9a-fA-F]+
 
+/* 运算操作符 */
+Operator      [+]|[-]|[!]
+
 %%
 
 {WhiteSpace}    { /* 忽略, 不做任何操作 */ }
@@ -38,6 +41,7 @@ Hexadecimal   0[xX][0-9a-fA-F]+
 "return"        { return RETURN; }
 
 {Identifier}    { yylval.str_val = new string(yytext); return IDENT; }
+{Operator}      { yylval.str_val = new string(yytext); return OPERATOR; }
 
 {Decimal}       { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 {Octal}         { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }

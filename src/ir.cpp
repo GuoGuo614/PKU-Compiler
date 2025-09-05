@@ -2,6 +2,27 @@
 
 using namespace std;
 
+koopa_raw_program_t RawProgramGen::generateKoopaIR(CompUnitAST *ast, const char* output) {
+    koopa_raw_program_t raw_program = this->raw_program_parse_from_ast(ast);
+    koopa_program_t ir_program;
+    koopa_generate_raw_to_koopa(&raw_program, &ir_program);
+
+    size_t len = 0;
+    koopa_dump_to_string(ir_program, nullptr, &len);
+    
+    char* buffer = new char[len + 1];
+    koopa_dump_to_string(ir_program, buffer, &len);
+    // 仅在需要输出 Koopa 文件时才写文件，-riscv 模式会传入 nullptr
+    if (output != nullptr) {
+        koopa_dump_to_file(ir_program, output);
+    }
+    
+    delete[] buffer;
+    koopa_delete_program(ir_program);
+    
+    return raw_program;
+}
+
 koopa_raw_program_t RawProgramGen::raw_program_parse_from_ast(CompUnitAST *ast) {
     koopa_raw_program_t raw_program;
 
@@ -121,20 +142,9 @@ koopa_raw_slice_t RawProgramGen::insts_parse_from_ast(StmtAST *stmt) {
     // 设置返回指令的类型和数据
     ret_value->kind.tag = KOOPA_RVT_RETURN;
     
-    // 解析返回值（从 NumberAST 获取）
-    NumberAST *number = static_cast<NumberAST*>(stmt->number.get());
-    
-    // 创建整数常量
-    koopa_raw_value_data_t *int_value = new koopa_raw_value_data_t();
-    koopa_raw_type_kind_t *int_type = new koopa_raw_type_kind_t();
-    int_type->tag = KOOPA_RTT_INT32;
-    int_value->ty = int_type;
-    int_value->name = nullptr;
-    int_value->used_by.buffer = nullptr;
-    int_value->used_by.len = 0;
-    int_value->used_by.kind = KOOPA_RSIK_VALUE;
-    int_value->kind.tag = KOOPA_RVT_INTEGER;
-    int_value->kind.data.integer.value = std::stoi(number->number);
+    // 解析返回值（从 ExprAST 获取）
+    ExprAST *expr = static_cast<ExprAST*>(stmt->exp.get());
+    koopa_raw_value_t int_value = this->expr_parse_from_ast(expr);
     
     // 设置返回指令的返回值
     ret_value->kind.data.ret.value = int_value;
@@ -149,22 +159,42 @@ koopa_raw_slice_t RawProgramGen::insts_parse_from_ast(StmtAST *stmt) {
     return insts_slice;
 }
 
-std::string RawProgramGen::generateKoopaIR(CompUnitAST *ast, const char* output) {
-    koopa_raw_program_t raw_program = this->raw_program_parse_from_ast(ast);
-    koopa_program_t ir_program;
-    koopa_generate_raw_to_koopa(&raw_program, &ir_program);
+koopa_raw_value_t RawProgramGen::expr_parse_from_ast(ExprAST* expr) {
+    auto ue = static_cast<UnaryExpAST*>(expr->unExp.get());
+    return this->unary_expr_parse_from_ast(ue);
+}
 
-    size_t len = 0;
-    koopa_dump_to_string(ir_program, nullptr, &len);
-    
-    char* buffer = new char[len + 1];
-    koopa_dump_to_string(ir_program, buffer, &len);
-    koopa_dump_to_file(ir_program, output);
-    
-    std::string KoopaIR_string(buffer);
-    
-    delete[] buffer;
-    koopa_delete_program(ir_program);
-    
-    return KoopaIR_string;
+koopa_raw_value_t RawProgramGen::unary_expr_parse_from_ast(UnaryExpAST* unary_expr) {
+    if (unary_expr->type == UnaryExpAST::PRIMARY) {
+        return this->primary_expr_parse_from_ast(static_cast<PrimaryExpAST*>(unary_expr->data.primary.get()));
+    } else {
+        koopa_raw_value_t value = this->unary_expr_parse_from_ast(static_cast<UnaryExpAST*>(unary_expr->data.unary.unExp.get()));
+        auto unop = static_cast<UnaryOpAST*>(unary_expr->data.unary.unOp.get());
+        switch (unop->op[0]) {
+        case '+':
+            return value; break;
+        case '-':
+            return create_integer_value(-value->kind.data.integer.value);
+        case '!':
+            return create_integer_value(!value->kind.data.integer.value);
+        default:
+            break;
+        }
+    }
+    return nullptr;
+}
+
+koopa_raw_value_t RawProgramGen::primary_expr_parse_from_ast(PrimaryExpAST* primary) {
+    if (primary->type == PrimaryExpAST::NUMBER) {
+        // 创建整数常量
+        NumberAST* number = static_cast<NumberAST*>(primary->data.number.get());
+        int _int_ = std::stoi(number->number);
+        koopa_raw_value_t int_value = create_integer_value(_int_);
+        
+        return int_value;
+    } else if (primary->type == PrimaryExpAST::EXPR) {
+        // 去括号，递归处理表达式
+        return this->expr_parse_from_ast(static_cast<ExprAST*>(primary->data.exp.get()));
+    }
+    return nullptr;
 }

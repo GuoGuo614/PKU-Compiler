@@ -4,9 +4,7 @@
 #include <iostream>
 
 enum class FuncType {
-    _INT,
-    _VOID,
-    _LONG
+    _INT, _VOID, _LONG
 };
 
 inline std::string funcTypeToString(FuncType type) {
@@ -75,11 +73,83 @@ class BlockAST : public BaseAST {
 class StmtAST : public BaseAST {
     public:
         std::string _return;
-        std::unique_ptr<BaseAST> number;
+        std::unique_ptr<BaseAST> exp;
 
         void Dump() const override {
             std::cout << "StmtAST { " << _return << " ";
-            number->Dump();
+            exp->Dump();
+            std::cout << " }";
+        }
+};
+
+class PrimaryExpAST : public BaseAST {
+    public:
+        enum PrimaryType {
+            EXPR,
+            NUMBER
+        };
+        
+        PrimaryType type;
+        struct {
+            std::unique_ptr<BaseAST> exp;
+            std::unique_ptr<BaseAST> number;
+        } data;
+
+        void Dump() const override {
+            std::cout << "PrimaryExpAST { ";
+            if (type == EXPR) {
+                data.exp->Dump();
+            } else {
+                data.number->Dump();
+            }
+            std::cout << " }";
+        }
+};
+
+class ExprAST : public BaseAST {
+    public:
+        std::unique_ptr<BaseAST> unExp;
+
+        void Dump() const override {
+            std::cout << "ExprAST { ";
+            unExp->Dump();
+            std::cout << " }";
+        }
+};
+
+class UnaryOpAST : public BaseAST {
+    public:
+        std::string op;  // 存储运算符字符串："+", "-", "!"
+        
+        void Dump() const override {
+            std::cout << "UnaryOpAST { " << op << " }";
+        }
+};
+
+class UnaryExpAST : public BaseAST {
+    public:
+        enum UnaryType {
+            PRIMARY, UNARY
+        };
+
+        UnaryType type;
+        struct {
+            std::unique_ptr<BaseAST> primary;
+            struct {
+                std::unique_ptr<BaseAST> unOp;
+                std::unique_ptr<BaseAST> unExp;
+            } unary;
+        } data;
+
+        void Dump() const override {
+            std::cout << "UnaryExpAST { ";
+            if (type == PRIMARY) {
+                data.primary->Dump();
+            } else {
+                data.unary.unOp->Dump();
+                std::cout << " ";
+                data.unary.unExp->Dump();
+            }
             std::cout << " }";
         }
 };

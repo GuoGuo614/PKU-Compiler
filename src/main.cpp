@@ -4,6 +4,7 @@
 #include <memory>
 #include "../include/ast.hpp"
 #include "../include/ir.hpp"
+#include "../include/riscv.hpp"
 
 using namespace std;
 
@@ -14,7 +15,7 @@ int main(int argc, const char *argv[]) {
   // 解析命令行参数. 测试脚本/评测平台要求你的编译器能接收如下参数:
   // compiler 模式 输入文件 -o 输出文件
   assert(argc == 5);
-  auto mode = argv[1];
+  string mode = argv[1];
   auto input = argv[2];
   auto output = argv[4];
 
@@ -27,9 +28,23 @@ int main(int argc, const char *argv[]) {
   auto ret = yyparse(ast);
   assert(!ret);
 
-  // 打印 AST，现需要将 AST 转换为 Koopa IR 程序
+  // 根据模式处理 AST
   RawProgramGen program_gen;
-  string koopa_ir = program_gen.generateKoopaIR(static_cast<CompUnitAST*>(ast.get()), output);
+  
+  if (mode == "-koopa") {
+    // 将 AST 转换为 Koopa IR 文件
+    program_gen.generateKoopaIR(static_cast<CompUnitAST*>(ast.get()), output);
+  } else if (mode == "-riscv") {
+    // 先将 AST 转换为 raw program，再生成 RISC-V 汇编
+    koopa_raw_program_t raw = program_gen.generateKoopaIR(static_cast<CompUnitAST*>(ast.get()), nullptr);
+    
+    // 将 raw program 转换为 riscv 汇编文件
+    RiscVGen riscv_gen;
+    riscv_gen.generateRiscV(raw, output);
+  } else {
+    cerr << "Unknown mode: " << mode << endl;
+    return 1;
+  }
 
   return 0;
 }
