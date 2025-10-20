@@ -1,26 +1,36 @@
-# 基于 Makefile 的 SysY 编译器项目模板
+# 基于 Cargo 的 SysY 编译器项目模板
 
-该仓库中存放了一个基于 Makefile 的 SysY 编译器项目的模板, 你可以在该模板的基础上进行进一步的开发.
+该仓库中存放了一个基于 Cargo 的 SysY 编译器项目的模板, 你可以在该模板的基础上进行进一步的开发.
 
-该仓库中的 C/C++ 代码实现仅作为演示, 不代表你的编译器必须以此方式实现. 如你需要使用该模板, 建议你删掉所有 C/C++ 源文件, 仅保留 `Makefile` 和必要的目录结构, 然后重新开始实现.
+该仓库中的 Rust 代码实现仅作为演示, 不代表你的编译器必须以此方式实现. 如你需要使用该模板, 建议你删掉所有 Rust 源文件, 仅保留 `Cargo.toml` 和必要的目录结构, 然后重新开始实现.
 
-该模板仅供不熟悉 Makefile 的同学参考, 在理解基本原理的基础上, 你完全可以不使用模板完成编译器的实现. 如你决定不使用该模板并自行编写 Makefile, 请参考 [“评测平台要求”](#评测平台要求) 部分.
+事实上, 基于 Cargo 的编译器项目**并不需要模板**. 不过为了保持和 [sysy-make-template](https://github.com/pku-minic/sysy-make-template) 以及 [sysy-cmake-template](https://github.com/pku-minic/sysy-cmake-template) 的一致性, 此处还是开放一个模板项目吧.
+
+你只需要使用如下命令:
+
+```sh
+cargo init --bin
+```
+
+即可在任意目录初始化一个基于 Cargo 的 Rust 项目, 该项目无需进行任何额外的修改, 即可被评测平台正确编译.
 
 ## 使用方法
+
+**注意: 通常情况下, 建议你不要使用本模板, 而直接使用 `cargo init` 初始化 Cargo 项目.**
 
 首先 clone 本仓库:
 
 ```sh
-git clone https://github.com/pku-minic/sysy-make-template.git
+git clone https://github.com/pku-minic/sysy-cmake-template.git
 ```
 
-在 [compiler-dev](https://github.com/pku-minic/compiler-dev) 环境内, 进入仓库目录后执行 `make` 即可编译得到可执行文件 (默认位于 `build/compiler`):
+进入仓库目录后执行:
 
 ```sh
-cd sysy-make-template
-make
+cargo run -- -koopa input.c -o output.koopa
 ```
-运行docker：docker run -it --rm -v $(pwd):/root/compiler maxxing/compiler-dev bash
+
+Cargo 将自动构建并运行该项目.
 
 如在此基础上进行开发, 你需要重新初始化 Git 仓库:
 
@@ -29,20 +39,14 @@ rm -rf .git
 git init
 ```
 
-然后, 根据情况修改 `Makefile` 中的 `CPP_MODE` 参数. 如果你决定使用 C 语言进行开发, 你应该将其值改为 `0`.
+然后将自己的编译器的源文件放入 `src` 目录.
 
-最后, 将自己的编译器的源文件放入 `src` 目录.
+## 评测平台要求
 
-## 测试要求
-
-当你提交一个根目录包含 `Makefile` 文件的仓库时, 测试脚本/评测平台会使用如下命令编译你的编译器:
+当你提交一个根目录包含 `Cargo.toml` 文件的仓库时, 评测平台会使用如下命令编译你的编译器:
 
 ```sh
-make DEBUG=0 BUILD_DIR="build目录" LIB_DIR="libkoopa目录" INC_DIR="libkoopa头文件目录" -C "repo目录"
+cargo build --manifest-path "Cargo.toml的路径" --release
 ```
 
-你的 `Makefile` 必须依据 `BUILD_DIR` 参数的值, 将生成的可执行文件输出到该路径中, 并命名为 `compiler`.
-
-如需链接 `libkoopa`, 你的 `Makefile` 应当处理 `LIB_DIR` 和 `INC_DIR`.
-
-模板中的 `Makefile` 已经处理了上述内容, 你无需额外关心.
+默认情况下, 你无需进行任何更改, 只需要确保项目的 manifest 文件名为 `Cargo.toml` 即可.
