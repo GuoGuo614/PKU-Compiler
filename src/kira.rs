@@ -2,11 +2,22 @@ use koopa::{ir::builder::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder, Val
 use koopa::back::KoopaGenerator;
 use crate::ast::*;
 
-pub fn generate_ir(comp: &CompUnit, output: String) {
-    let program = program_parse_from_ast(comp);
-    let mut gen = KoopaGenerator::new(Vec::new());
-    gen.generate_on(&program).expect("koopa serialize failed");
-    std::fs::write(output, gen.writer()).expect("write ir file failed");
+pub trait GenerateIR {
+    fn generate_ir(&self) -> ir::Program;
+    fn write_ir(&self, output: String);
+}
+
+impl GenerateIR for CompUnit {
+    fn write_ir(&self, output: String) {
+        let program = program_parse_from_ast(self);
+        let mut gen = KoopaGenerator::new(Vec::new());
+        gen.generate_on(&program).expect("koopa serialize failed");
+        std::fs::write(output, gen.writer()).expect("write ir file failed");
+    }
+
+    fn generate_ir(&self) -> ir::Program {
+        program_parse_from_ast(self)
+    }
 }
 
 pub fn program_parse_from_ast(comp: &CompUnit) -> ir::Program {
@@ -28,12 +39,13 @@ pub fn program_parse_from_ast(comp: &CompUnit) -> ir::Program {
         let func = program.func_mut(func_handle);
         let dfg = func.dfg_mut();
 
-        // create entry basic block
+        // 创建入口基本块
         let bb_builder = dfg.new_bb();
         let bb = bb_builder.basic_block(Some(String::from("%entry")));
 
-        // create constant 0 and a ret using dfg (globals now available if needed)
-        let zero = dfg.new_value().integer(0);
+        // 创建 ret 指令
+        let ret_value = comp.func_def.block.stmt.num;
+        let zero = dfg.new_value().integer(ret_value);
         let ret = dfg.new_value().ret(Some(zero));
 
         // update layout: push bb, then push ret into bb's inst list
