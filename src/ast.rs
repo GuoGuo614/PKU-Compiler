@@ -1,26 +1,43 @@
-#[derive(Debug)]
 pub struct CompUnit {
   pub func_def: FuncDef,
 }
 
-#[derive(Debug)]
 pub struct FuncDef {
   pub func_type: FuncType,
   pub ident: String,
   pub block: Block,
 }
 
-#[derive(Debug)]
 pub struct FuncType {
   pub _type: String,
 }
 
-#[derive(Debug)]
 pub struct Block {
   pub stmt: Stmt,
 }
 
-#[derive(Debug)]
-pub struct Stmt {
-  pub num: i32,
+pub enum Stmt {
+  Return(Exp)
+}
+
+pub struct Exp {
+  pub unary_exp: UnaryExp,
+}
+
+pub enum UnaryExp {
+  Primary(PrimaryExp),
+  UnaryOp {
+    op: UnaryOp,
+  },
+}
+
+pub enum PrimaryExp {
+  Paren(Box<Exp>),
+  Number(i32),
+}
+
+pub enum UnaryOp {
+  Plus,
+  Minus,
+  Not,
 }

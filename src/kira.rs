@@ -44,8 +44,9 @@ pub fn program_parse_from_ast(comp: &CompUnit) -> ir::Program {
         let bb = bb_builder.basic_block(Some(String::from("%entry")));
 
         // 创建 ret 指令
-        let ret_value = comp.func_def.block.stmt.num;
-        let zero = dfg.new_value().integer(ret_value);
+        let Stmt::Return(ret_value) = comp.func_def.block.stmt;
+
+        let zero = dfg.new_value().integer(0);
         let ret = dfg.new_value().ret(Some(zero));
 
         // update layout: push bb, then push ret into bb's inst list
