@@ -164,7 +164,7 @@ impl<'a, W: Write> AsmCtx<'a, W> {
             },
             ir::BinaryOp::Or => {
                 writeln!(self.w, "\tor {}, {}, {}", rd, rl, rr)
-            }
+            },
             _ => panic!("Unsupported BinaryOp"),
         }.expect("Write error");
     }

@@ -1,5 +1,3 @@
-use std::ops::Add;
-
 pub struct CompUnit {
   pub func_def: FuncDef,
 }

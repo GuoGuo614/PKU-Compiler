@@ -142,7 +142,7 @@ fn emit_ast_lor(lor: &LOrExp, ctx: &mut FuncCtx) -> ir::Value {
             let lv = to_bool(ctx, l_raw);
             let r_raw = emit_ast_land(r, ctx);
             let rv = to_bool(ctx, r_raw);
-            
+
             ctx.emit_binary(ir::BinaryOp::Or, lv, rv)
         }
     }
@@ -151,8 +151,7 @@ fn emit_ast_lor(lor: &LOrExp, ctx: &mut FuncCtx) -> ir::Value {
 fn emit_ast_land(land: &LAndExp, ctx: &mut FuncCtx) -> ir::Value {
     match land {
         LAndExp::Eq(eq) => {
-            let v = emit_ast_eq(eq, ctx);
-            to_bool(ctx, v)
+            emit_ast_eq(eq, ctx)
         }
         LAndExp::And(l, r) => {
             let l_raw = emit_ast_land(l, ctx);
