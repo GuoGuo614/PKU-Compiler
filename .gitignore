@@ -8,3 +8,4 @@ hello.s
 hello
 hello.o
 /target
+gpt.rs

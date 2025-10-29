@@ -103,11 +103,107 @@ impl<'a> FuncCtx<'a> {
             .push_key_back(v)
             .expect("Failed to push instruction");
     }
+
+    // 判断一个值是否已经是布尔（0/1）
+    fn is_bool(&mut self, v: ir::Value) -> bool {
+        use koopa::ir::ValueKind;
+        let kind = self.func.dfg().value(v).kind();
+        match kind {
+            ValueKind::Integer(int) => int.value() == 0 || int.value() == 1,
+            ValueKind::Binary(bin) => {
+                matches!(bin.op(), ir::BinaryOp::Eq| ir::BinaryOp::Lt 
+                | ir::BinaryOp::Le | ir::BinaryOp::Gt | ir::BinaryOp::Ge | ir::BinaryOp::NotEq)
+            }
+            _ => false,
+        }
+    }
 }
 
 // 表达式生成（基于上下文）
 fn emit_ast_exp(exp: &Exp, ctx: &mut FuncCtx) -> ir::Value {
-    emit_ast_add(&exp.add_exp, ctx)
+    emit_ast_lor(&exp.lor_exp, ctx)
+}
+
+// 将整数转为布尔代数
+fn to_bool(ctx: &mut FuncCtx, v: ir::Value) -> ir::Value {
+    if ctx.is_bool(v) {
+        return v;
+    }
+    let zero = ctx.make_int(0);
+    let is_zero = ctx.emit_binary(ir::BinaryOp::Eq, v, zero); // 1 if v == 0
+    ctx.emit_binary(ir::BinaryOp::Eq, is_zero, zero) // 1 if v != 0
+}
+
+fn emit_ast_lor(lor: &LOrExp, ctx: &mut FuncCtx) -> ir::Value {
+    match lor {
+        LOrExp::And(land) => emit_ast_land(land, ctx),
+        LOrExp::Or(l, r) => {
+            let l_raw = emit_ast_lor(l, ctx);
+            let lv = to_bool(ctx, l_raw);
+            let r_raw = emit_ast_land(r, ctx);
+            let rv = to_bool(ctx, r_raw);
+            
+            ctx.emit_binary(ir::BinaryOp::Or, lv, rv)
+        }
+    }
+}
+
+fn emit_ast_land(land: &LAndExp, ctx: &mut FuncCtx) -> ir::Value {
+    match land {
+        LAndExp::Eq(eq) => {
+            let v = emit_ast_eq(eq, ctx);
+            to_bool(ctx, v)
+        }
+        LAndExp::And(l, r) => {
+            let l_raw = emit_ast_land(l, ctx);
+            let lv = to_bool(ctx, l_raw);
+            let r_raw = emit_ast_eq(r, ctx);
+            let rv = to_bool(ctx, r_raw);
+            ctx.emit_binary(ir::BinaryOp::And, lv, rv)
+        }
+    }
+}
+
+fn emit_ast_eq(eq: &EqExp, ctx: &mut FuncCtx) -> ir::Value {
+    match eq {
+        EqExp::Rel(rel) => emit_ast_rel(rel, ctx),
+        EqExp::Eq(l, r) => {
+            let lv = emit_ast_eq(l, ctx);
+            let rv = emit_ast_rel(r, ctx);
+            ctx.emit_binary(ir::BinaryOp::Eq, lv, rv)
+        }
+        EqExp::Neq(l, r) => {
+            let lv = emit_ast_eq(l, ctx);
+            let rv = emit_ast_rel(r, ctx);
+            ctx.emit_binary(ir::BinaryOp::NotEq, lv, rv)
+        }
+    }
+}
+
+fn emit_ast_rel(rel: &RelExp, ctx: &mut FuncCtx) -> ir::Value {
+    match rel {
+        RelExp::Add(add) => emit_ast_add(add, ctx),
+        RelExp::Lt(l, r) => {
+            let lv = emit_ast_rel(l, ctx);
+            let rv = emit_ast_add(r, ctx);
+            ctx.emit_binary(ir::BinaryOp::Lt, lv, rv)
+        }
+        RelExp::Gt(l, r) => {
+            let lv = emit_ast_rel(l, ctx);
+            let rv = emit_ast_add(r, ctx);
+            ctx.emit_binary(ir::BinaryOp::Gt, lv, rv)
+        }
+        RelExp::Ge(l, r) => {
+            let lv = emit_ast_rel(l, ctx);
+            let rv = emit_ast_add(r, ctx);
+            ctx.emit_binary(ir::BinaryOp::Ge, lv, rv)
+        }
+        RelExp::Le(l, r) => {
+            let lv = emit_ast_rel(l, ctx);
+            let rv = emit_ast_add(r, ctx);
+            ctx.emit_binary(ir::BinaryOp::Le, lv, rv)
+        }
+    }
 }
 
 fn emit_ast_add(add: &AddExp, ctx: &mut FuncCtx) -> ir::Value {

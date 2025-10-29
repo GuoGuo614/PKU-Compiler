@@ -25,6 +25,14 @@ impl GenerateAsm for ir::Program {
     }
 }
 
+// 建立 AsmCtx，并派发任务
+impl GenerateAsm for ir::FunctionData {
+    fn write_assm_to<W: Write>(&self, w: &mut W) {
+        let mut ctx = AsmCtx::new(self, w);
+        ctx.emit_function();
+    }
+}
+
 struct RegAlloc {
     free: Vec<&'static str>,
     reg_map: HashMap<ir::Value, &'static str>,
@@ -63,88 +71,121 @@ impl RegAlloc {
     }
 }
 
-impl GenerateAsm for ir::FunctionData {
-    fn write_assm_to<W: Write>(&self, w: &mut W) {
-        let mut reg_alloc = RegAlloc::new();
-        
-        for (&_bb, node) in self.layout().bbs() {
-            // 遍历指令列表
-            for &inst in node.insts().keys() {
-                let value_data = self.dfg().value(inst);
-                match value_data.kind() {
-                    // 指令通常不存在 Integer 类型
-                    ValueKind::Integer(int) => {
-                        let reg = reg_alloc.alloc();
-                        writeln!(w, "\tli {}, {}", reg, int.value()).expect("Write error");
-                        reg_alloc.bind(inst, reg);
-                    },
-                    ValueKind::Binary(bin) => {
-                        let lhs = bin.lhs();
-                        let rhs = bin.rhs();
-                        let regl = reg_or_materialize(&mut reg_alloc, self, w, lhs);
-                        let regr = reg_or_materialize(&mut reg_alloc, self, w, rhs);
-                        let rd = reg_alloc.alloc();
-                        
-                        match bin.op() {
-                            ir::BinaryOp::Eq => {
-                                writeln!(w, "\txor {}, {}, {}", rd, regl, regr).expect("Write error");
-                                writeln!(w, "\tseqz {}, {}", rd, rd).expect("Write error");
-                            },
-                            ir::BinaryOp::Add => {
-                                writeln!(w, "\tadd {}, {}, {}", rd, regl, regr).expect("Write error");
-                            }
-                            ir::BinaryOp::Sub => {
-                                writeln!(w, "\tsub {}, {}, {}", rd, regl, regr).expect("Write error");
-                            },
-                            ir::BinaryOp::Mul => {
-                                writeln!(w, "\tmul {}, {}, {}", rd, regl, regr).expect("Write error");
-                            },
-                            ir::BinaryOp::Div => {
-                                writeln!(w, "\tdiv {}, {}, {}", rd, regl, regr).expect("Write error");
-                            },
-                            _ => panic!("Unsupported BinaryOp")
-                        }
-                        reg_alloc.bind(inst, rd);
-                        reg_alloc.dec_use(lhs);
-                        reg_alloc.dec_use(rhs);
-                    }
-                    ValueKind::Return(ret) => {
-                        // 处理 ret 指令
-                        let val = ret.value().expect("Return without value");
-                        let rv = reg_or_materialize(&mut reg_alloc, self, w, val);
-                        
-                        writeln!(w, "\tmv a0, {}", rv).expect("Write error");
-                        writeln!(w, "\tret").expect("Write error");
-                        reg_alloc.dec_use(val);
-                    }
-                    // 其他种类暂时遇不到
-                    _ => unreachable!(),
-                }
-            }
-        }
-    }
+// 生成上下文：封装 writer / func / 分配器
+struct AsmCtx<'a, W: Write> {
+    w: &'a mut W,
+    func: &'a ir::FunctionData,
+    ra: RegAlloc,
 }
 
-fn reg_or_materialize<W: Write>(
-    ra: &mut RegAlloc,
-    func: &ir::FunctionData,
-    w: &mut W,
-    v: ir::Value,
-) -> &'static str {
-    if let Some(r) = ra.reg_of(v) {
-        return r;
+impl<'a, W: Write> AsmCtx<'a, W> {
+    fn new(func: &'a ir::FunctionData, w: &'a mut W) -> Self {
+        Self { w, func, ra: RegAlloc::new() }
     }
-    match func.dfg().value(v).kind() {
-        ValueKind::Integer(int) => {
-            if int.value() == 0 {
-                "x0"
-            } else {
-                let rd = ra.alloc();
-                writeln!(w, "\tli {}, {}", rd, int.value()).expect("Write error");
-                ra.bind(v, rd);
-                rd
-            }
+
+    fn emit_function(&mut self) {
+        for (&_bb, node) in self.func.layout().bbs() {
+            self.emit_block(node);
         }
-        _ => panic!("Operand not in register."),
+    }
+
+    fn emit_block(&mut self, bb_node: &ir::layout::BasicBlockNode) {
+        for &inst in bb_node.insts().keys() {
+            self.emit_inst(inst);
+        }
+    }
+
+    fn emit_inst(&mut self, inst: ir::Value) {
+        let v = self.func.dfg().value(inst);
+        match v.kind() {
+            ValueKind::Integer(int) => {
+                // 常量一般不会直接作为指令出现
+                if int.value() != 0 {
+                    let rd = self.ra.alloc();
+                    writeln!(self.w, "\tli {}, {}", rd, int.value()).expect("Write error");
+                    self.ra.bind(inst, rd);
+                }
+            }
+            ValueKind::Binary(bin) => {
+                let lhs = bin.lhs();
+                let rhs = bin.rhs();
+                let rl = self.reg_for(lhs);
+                let rr = self.reg_for(rhs);
+                let rd = self.ra.alloc();
+
+                self.emit_binary(bin.op(), rd, rl, rr);
+
+                self.ra.bind(inst, rd);
+                self.ra.dec_use(lhs);
+                self.ra.dec_use(rhs);
+            }
+            ValueKind::Return(ret) => {
+                let v = ret.value().expect("Return without value");
+                let rv = self.reg_for(v);
+                writeln!(self.w, "\tmv a0, {}", rv).expect("Write error");
+                writeln!(self.w, "\tret").expect("Write error");
+                self.ra.dec_use(v);
+            }
+            _ => unreachable!("Unsupported value kind"),
+        }
+    }
+
+    fn emit_binary(&mut self, op: ir::BinaryOp, rd: &str, rl: &str, rr: &str) {
+        match op {
+            ir::BinaryOp::Add => writeln!(self.w, "\tadd {}, {}, {}", rd, rl, rr),
+            ir::BinaryOp::Sub => writeln!(self.w, "\tsub {}, {}, {}", rd, rl, rr),
+            ir::BinaryOp::Mul => writeln!(self.w, "\tmul {}, {}, {}", rd, rl, rr),
+            ir::BinaryOp::Div => writeln!(self.w, "\tdiv {}, {}, {}", rd, rl, rr),
+            ir::BinaryOp::Mod => writeln!(self.w, "\trem {}, {}, {}", rd, rl, rr),
+            ir::BinaryOp::Eq  => {
+                writeln!(self.w, "\txor {}, {}, {}", rd, rl, rr).expect("Write error");
+                writeln!(self.w, "\tseqz {}, {}", rd, rd)
+            },
+            ir::BinaryOp::NotEq => {
+                writeln!(self.w, "\txor {}, {}, {}", rd, rl, rr).expect("Write error");
+                writeln!(self.w, "\tsnez {}, {}", rd, rd)
+            }
+            ir::BinaryOp::Le => {
+                writeln!(self.w, "\tslt {}, {}, {}", rd, rr, rl).expect("Write error");
+                writeln!(self.w, "\txori {}, {}, 1", rd, rd)
+            },
+            ir::BinaryOp::Ge => {
+                writeln!(self.w, "\tslt {}, {}, {}", rd, rl, rr).expect("Write error");
+                writeln!(self.w, "\txori {}, {}, 1", rd, rd)
+            },
+            ir::BinaryOp::Lt => {
+                writeln!(self.w, "\tslt {}, {}, {}", rd, rl, rr)
+            },
+            ir::BinaryOp::Gt => {
+                writeln!(self.w, "\tslt {}, {}, {}", rd, rr, rl)
+            },
+            ir::BinaryOp::And => {
+                writeln!(self.w, "\tand {}, {}, {}", rd, rl, rr)
+            },
+            ir::BinaryOp::Or => {
+                writeln!(self.w, "\tor {}, {}, {}", rd, rl, rr)
+            }
+            _ => panic!("Unsupported BinaryOp"),
+        }.expect("Write error");
+    }
+
+    // 获取操作数寄存器：已绑定直接用；0 用 x0；其他立即数当场 li
+    fn reg_for(&mut self, v: ir::Value) -> &'static str {
+        if let Some(r) = self.ra.reg_of(v) {
+            return r;
+        }
+        match self.func.dfg().value(v).kind() {
+            ValueKind::Integer(int) => {
+                if int.value() == 0 {
+                    "x0"
+                } else {
+                    let rd = self.ra.alloc();
+                    writeln!(self.w, "\tli {}, {}", rd, int.value()).expect("Write error");
+                    self.ra.bind(v, rd);
+                    rd
+                }
+            }
+            _ => panic!("Operand not in register and not an immediate"),
+        }
     }
 }

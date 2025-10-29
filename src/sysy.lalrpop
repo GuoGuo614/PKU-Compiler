@@ -35,8 +35,8 @@ Block: Block = "{" <stmt: Stmt> "}" => Block {
 
 Stmt: Stmt = "return" <exp: Exp> ";" => Stmt::Return(exp);
 
-Exp: Exp = <add_exp: AddExp> => Exp {
-  add_exp
+Exp: Exp = <lor_exp: LOrExp> => Exp {
+  lor_exp
 };
 
 UnaryExp: UnaryExp = {
@@ -64,6 +64,30 @@ MulExp: MulExp = {
   <mul_exp: MulExp> "*" <unary: UnaryExp> => MulExp::Mul(Box::new(mul_exp), unary),
   <mul_exp: MulExp> "/" <unary: UnaryExp> => MulExp::Div(Box::new(mul_exp), unary),
   <mul_exp: MulExp> "%" <unary: UnaryExp> => MulExp::Mod(Box::new(mul_exp), unary),
+}
+
+LOrExp: LOrExp = {
+  <land: LAndExp> => LOrExp::And(land),
+  <lor: LOrExp> "||" <land: LAndExp> => LOrExp::Or(Box::new(lor), land),
+}
+
+LAndExp: LAndExp = {
+  <eq: EqExp> => LAndExp::Eq(eq),
+  <land: LAndExp> "&&" <eq: EqExp> => LAndExp::And(Box::new(land), eq),
+}
+
+EqExp: EqExp = {
+  <rel: RelExp> => EqExp::Rel(rel),
+  <eq_exp: EqExp> "==" <rel: RelExp> => EqExp::Eq(Box::new(eq_exp), rel),
+  <eq_exp: EqExp> "!=" <rel: RelExp> => EqExp::Neq(Box::new(eq_exp), rel),
+}
+
+RelExp: RelExp = {
+  <add: AddExp> => RelExp::Add(add),
+  <rel: RelExp> "<" <add: AddExp> => RelExp::Lt(Box::new(rel), add),
+  <rel: RelExp> ">" <add: AddExp> => RelExp::Gt(Box::new(rel), add),
+  <rel: RelExp> ">=" <add: AddExp> => RelExp::Ge(Box::new(rel), add),
+  <rel: RelExp> "<=" <add: AddExp> => RelExp::Le(Box::new(rel), add),
 }
 
 // 如果匹配到标识符, 就返回这个字符串

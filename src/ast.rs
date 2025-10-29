@@ -23,7 +23,7 @@ pub enum Stmt {
 }
 
 pub struct Exp {
-  pub add_exp: AddExp,
+  pub lor_exp: LOrExp,
 }
 
 pub enum UnaryExp {
@@ -39,9 +39,9 @@ pub enum PrimaryExp {
 }
 
 pub enum AddExp {
-    Mul(MulExp),
-    Add(Box<AddExp>, MulExp),
-    Sub(Box<AddExp>, MulExp),
+  Mul(MulExp),
+  Add(Box<AddExp>, MulExp),
+  Sub(Box<AddExp>, MulExp),
 }
 
 pub enum MulExp {
@@ -49,4 +49,28 @@ pub enum MulExp {
   Mul(Box<MulExp>, UnaryExp),
   Div(Box<MulExp>, UnaryExp),
   Mod(Box<MulExp>, UnaryExp),
+}
+
+pub enum LOrExp {
+  And(LAndExp),
+  Or(Box<LOrExp>, LAndExp),
+}
+
+pub enum LAndExp {
+  Eq(EqExp),
+  And(Box<LAndExp>, EqExp),
+}
+
+pub enum EqExp {
+  Rel(RelExp),
+  Eq(Box<EqExp>, RelExp),
+  Neq(Box<EqExp>, RelExp),
+}
+
+pub enum RelExp {
+  Add(AddExp),
+  Lt(Box<RelExp>, AddExp),
+  Gt(Box<RelExp>, AddExp),
+  Ge(Box<RelExp>, AddExp),
+  Le(Box<RelExp>, AddExp),
 }
