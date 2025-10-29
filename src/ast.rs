@@ -26,9 +26,9 @@ pub struct Exp {
 
 pub enum UnaryExp {
   Primary(PrimaryExp),
-  UnaryOp {
-    op: UnaryOp,
-  },
+  Positive(Box<UnaryExp>),
+  Negative(Box<UnaryExp>),
+  Not(Box<UnaryExp>),
 }
 
 pub enum PrimaryExp {
@@ -36,8 +36,8 @@ pub enum PrimaryExp {
   Number(i32),
 }
 
-pub enum UnaryOp {
-  Plus,
-  Minus,
-  Not,
-}
+// pub enum UnaryOp {
+//   Plus,
+//   Minus,
+//   Not,
+// }

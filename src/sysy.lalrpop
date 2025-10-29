@@ -33,9 +33,23 @@ Block: Block = "{" <stmt: Stmt> "}" => Block {
     stmt
 };
 
-Stmt: Stmt = "return" <num: Number> ";" => Stmt {
-    num,
+Stmt: Stmt = "return" <exp: Exp> ";" => Stmt::Return(exp);
+
+Exp: Exp = <unary_exp: UnaryExp> => Exp {
+  unary_exp
 };
+
+UnaryExp: UnaryExp = {
+  <primary_exp: PrimaryExp> => UnaryExp::Primary(primary_exp),
+  "+" <unary_exp: UnaryExp> => UnaryExp::Positive(Box::new(unary_exp)),
+  "-" <unary_exp: UnaryExp> => UnaryExp::Negative(Box::new(unary_exp)),
+  "!" <unary_exp: UnaryExp> => UnaryExp::Not(Box::new(unary_exp)),
+};
+
+PrimaryExp: PrimaryExp = {
+  "(" <exp: Exp> ")" => PrimaryExp::Paren(Box::new(exp)),
+  <num: Number> => PrimaryExp::Number(num),
+}
 
 Number: i32 = <num: IntConst> => num;
 
