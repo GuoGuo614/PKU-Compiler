@@ -1,3 +1,5 @@
+use std::ops::Add;
+
 pub struct CompUnit {
   pub func_def: FuncDef,
 }
@@ -21,7 +23,7 @@ pub enum Stmt {
 }
 
 pub struct Exp {
-  pub unary_exp: UnaryExp,
+  pub add_exp: AddExp,
 }
 
 pub enum UnaryExp {
@@ -36,8 +38,15 @@ pub enum PrimaryExp {
   Number(i32),
 }
 
-// pub enum UnaryOp {
-//   Plus,
-//   Minus,
-//   Not,
-// }
+pub enum AddExp {
+    Mul(MulExp),
+    Add(Box<AddExp>, MulExp),
+    Sub(Box<AddExp>, MulExp),
+}
+
+pub enum MulExp {
+  Unary(UnaryExp),
+  Mul(Box<MulExp>, UnaryExp),
+  Div(Box<MulExp>, UnaryExp),
+  Mod(Box<MulExp>, UnaryExp),
+}

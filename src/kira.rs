@@ -107,7 +107,48 @@ impl<'a> FuncCtx<'a> {
 
 // 表达式生成（基于上下文）
 fn emit_ast_exp(exp: &Exp, ctx: &mut FuncCtx) -> ir::Value {
-    emit_ast_unary(&exp.unary_exp, ctx)
+    emit_ast_add(&exp.add_exp, ctx)
+}
+
+fn emit_ast_add(add: &AddExp, ctx: &mut FuncCtx) -> ir::Value {
+    match add {
+        AddExp::Mul(mul_exp) => {
+            emit_ast_mul(mul_exp, ctx)
+        },
+        AddExp::Sub(add_exp, mul_exp) => {
+            let left = emit_ast_add(add_exp, ctx);
+            let right = emit_ast_mul(mul_exp, ctx);
+            ctx.emit_binary(ir::BinaryOp::Sub, left, right)
+        },
+        AddExp::Add(add_exp, mul_exp) => {
+            let left = emit_ast_add(add_exp, ctx);
+            let right = emit_ast_mul(mul_exp, ctx);
+            ctx.emit_binary(ir::BinaryOp::Add, left, right)
+        },
+    }
+}
+
+fn emit_ast_mul(mul: &MulExp, ctx: &mut FuncCtx) -> ir::Value {
+    match mul {
+        MulExp::Unary(unary) => {
+            emit_ast_unary(unary, ctx)
+        },
+        MulExp::Mul(mul_exp, unary) => {
+            let left = emit_ast_mul(mul_exp, ctx);
+            let right = emit_ast_unary(unary, ctx);
+            ctx.emit_binary(ir::BinaryOp::Mul, left, right)
+        },
+        MulExp::Div(mul_exp, unary) => {
+            let left = emit_ast_mul(mul_exp, ctx);
+            let right = emit_ast_unary(unary, ctx);
+            ctx.emit_binary(ir::BinaryOp::Div, left, right)
+        },
+        MulExp::Mod(mul_exp, unary) => {
+            let left = emit_ast_mul(mul_exp, ctx);
+            let right = emit_ast_unary(unary, ctx);
+            ctx.emit_binary(ir::BinaryOp::Mod, left, right)
+        },
+    }
 }
 
 fn emit_ast_unary(unary: &UnaryExp, ctx: &mut FuncCtx) -> ir::Value {

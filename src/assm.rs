@@ -90,9 +90,18 @@ impl GenerateAsm for ir::FunctionData {
                                 writeln!(w, "\txor {}, {}, {}", rd, regl, regr).expect("Write error");
                                 writeln!(w, "\tseqz {}, {}", rd, rd).expect("Write error");
                             },
+                            ir::BinaryOp::Add => {
+                                writeln!(w, "\tadd {}, {}, {}", rd, regl, regr).expect("Write error");
+                            }
                             ir::BinaryOp::Sub => {
                                 writeln!(w, "\tsub {}, {}, {}", rd, regl, regr).expect("Write error");
-                            }
+                            },
+                            ir::BinaryOp::Mul => {
+                                writeln!(w, "\tmul {}, {}, {}", rd, regl, regr).expect("Write error");
+                            },
+                            ir::BinaryOp::Div => {
+                                writeln!(w, "\tdiv {}, {}, {}", rd, regl, regr).expect("Write error");
+                            },
                             _ => panic!("Unsupported BinaryOp")
                         }
                         reg_alloc.bind(inst, rd);
