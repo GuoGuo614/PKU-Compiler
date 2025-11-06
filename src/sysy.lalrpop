@@ -29,8 +29,47 @@ FuncType: FuncType = "int" => FuncType {
     _type: "int".to_string()
 };
 
-Block: Block = "{" <stmt: Stmt> "}" => Block {
-    stmt
+// Declarations
+Decl: Decl = <const_decl: ConstDecl> => Decl { const_decl };
+
+ConstDecl: ConstDecl = "const" <btype: BType> <defs: ConstDefList> ";" => ConstDecl {
+    btype,
+    const_defs: defs,
+};
+
+ConstDefList: Vec<ConstDef> = {
+  <first: ConstDef> <rest: ("," <ConstDef>)*> => {
+    let mut v = vec![first];
+    for d in rest { v.push(d); }
+    v
+  }
+};
+
+BType: BType = "int" => BType { _type: "int".to_string() };
+
+ConstDef: ConstDef = <ident: Ident> "=" <val: ConstInitVal> => ConstDef {
+  ident,
+  const_val: val,
+};
+
+ConstInitVal: ConstInitVal = <ce: ConstExp> => ConstInitVal { const_exp: ce };
+
+ConstExp: ConstExp = <exp: Exp> => ConstExp { exp };
+
+// Block and items
+Block: Block = "{" <block_items: BlockItemList> "}" => Block { block_items };
+
+BlockItemList: Vec<BlockItem> = {
+  <first: BlockItem> <rest: (<BlockItem>)*> => {
+    let mut v = vec![first];
+    for d in rest { v.push(d); }
+    v
+  }
+};
+
+BlockItem: BlockItem = {
+  <decl: Decl> => BlockItem::Decl(decl),
+  <stmt: Stmt> => BlockItem::Stmt(stmt),
 };
 
 Stmt: Stmt = "return" <exp: Exp> ";" => Stmt::Return(exp);
@@ -46,8 +85,12 @@ UnaryExp: UnaryExp = {
   "!" <unary_exp: UnaryExp> => UnaryExp::Not(Box::new(unary_exp)),
 };
 
+// LVal and PrimaryExp extension
+LVal: LVal = <ident: Ident> => LVal { ident };
+
 PrimaryExp: PrimaryExp = {
   "(" <exp: Exp> ")" => PrimaryExp::Paren(Box::new(exp)),
+  <lval: LVal> => PrimaryExp::LVal(lval),
   <num: Number> => PrimaryExp::Number(num),
 }
 

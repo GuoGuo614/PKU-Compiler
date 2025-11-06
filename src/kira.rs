@@ -1,6 +1,11 @@
-use koopa::{ir::builder::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder, ValueInserter}, *};
+use crate::symbol::SymbolTable;
+
+use koopa::{ir::builder::{BasicBlockBuilder, ValueInserter}, *};
 use koopa::back::KoopaGenerator;
 use crate::ast::*;
+
+use crate::const_eval::EvalConst;
+use crate::ctx::FuncCtx;
 
 pub trait GenerateIR {
     fn generate_ir(&self) -> ir::Program;
@@ -24,20 +29,22 @@ pub fn program_parse_from_ast(comp: &CompUnit) -> ir::Program {
     let mut program = ir::Program::new();
     let mut glo_builder: ir::builder::GlobalBuilder<'_> = program.new_value();
 
-    parse_global_values(&mut glo_builder);
-    parse_function_from_ast(comp, &mut program);
+    let mut sym = SymbolTable::new();
+
+    parse_global_values(&mut glo_builder, &mut sym);
+    parse_function_from_ast(comp, &mut program, &mut sym);
 
     program
 }
 
-fn parse_global_values(glo_builder: &mut ir::builder::GlobalBuilder<'_>) {
+fn parse_global_values(glo_builder: &mut ir::builder::GlobalBuilder<'_>, sym: &mut SymbolTable) {
     let global_values = values_parse_from_ast();
     for global_value in global_values {
         glo_builder.insert_value(global_value);
     }
 }
 
-fn parse_function_from_ast(comp: &CompUnit, program: &mut ir::Program) {
+fn parse_function_from_ast(comp: &CompUnit, program: &mut ir::Program, sym: &mut SymbolTable) {
     let func_type = functype_parse_from_ast(&comp.func_def.func_type);
     let func_name = format!("@{}", comp.func_def.ident);
 
@@ -45,11 +52,16 @@ fn parse_function_from_ast(comp: &CompUnit, program: &mut ir::Program) {
     let func_handle = program.new_func(func_data);
 
     // 解析函数体
-    parse_function_body(&comp.func_def, program, func_handle);
+    parse_function_body(&comp.func_def, program, func_handle, sym);
 }
 
 // 为了避免借用检查写出了比较丑的代码，使用 GPT 重构下
-fn parse_function_body(func_def: &FuncDef, program: &mut ir::Program, func_handle: ir::Function) {
+fn parse_function_body(
+    func_def: &FuncDef, 
+    program: &mut ir::Program, 
+    func_handle: ir::Function,
+    sym: &mut SymbolTable,
+) {
     let func = program.func_mut(func_handle);
 
     // 1) 短借用 dfg 创建 entry 基本块
@@ -65,56 +77,22 @@ fn parse_function_body(func_def: &FuncDef, program: &mut ir::Program, func_handl
     };
 
     // 3) 用上下文封装对 func 的操作，避免重叠借用
-    let mut ctx = FuncCtx { func, bb };
+    let mut ctx = FuncCtx { func, bb, sym };
 
-    let Stmt::Return(exp) = &func_def.block.stmt;
-    let ret_val = emit_ast_exp(exp, &mut ctx);
-    ctx.emit_ret(ret_val);
-}
-
-// 轻量 IR 上下文，内部方法只做“短借用”
-// 我的天哪 GPT 大人
-struct FuncCtx<'a> {
-    func: &'a mut ir::FunctionData,
-    bb: ir::BasicBlock,
-}
-
-impl<'a> FuncCtx<'a> {
-    fn make_int(&mut self, v: i32) -> ir::Value {
-        self.func.dfg_mut().new_value().integer(v)
-    }
-
-    fn emit_binary(&mut self, op: ir::BinaryOp, lhs: ir::Value, rhs: ir::Value) -> ir::Value {
-        let v = self.func.dfg_mut().new_value().binary(op, lhs, rhs);
-        self.push_inst(v);
-        v
-    }
-
-    fn emit_ret(&mut self, val: ir::Value) {
-        let inst = self.func.dfg_mut().new_value().ret(Some(val));
-        self.push_inst(inst);
-    }
-
-    fn push_inst(&mut self, v: ir::Value) {
-        self.func
-            .layout_mut()
-            .bb_mut(self.bb)
-            .insts_mut()
-            .push_key_back(v)
-            .expect("Failed to push instruction");
-    }
-
-    // 判断一个值是否已经是布尔（0/1）
-    fn is_bool(&mut self, v: ir::Value) -> bool {
-        use koopa::ir::ValueKind;
-        let kind = self.func.dfg().value(v).kind();
-        match kind {
-            ValueKind::Integer(int) => int.value() == 0 || int.value() == 1,
-            ValueKind::Binary(bin) => {
-                matches!(bin.op(), ir::BinaryOp::Eq| ir::BinaryOp::Lt 
-                | ir::BinaryOp::Le | ir::BinaryOp::Gt | ir::BinaryOp::Ge | ir::BinaryOp::NotEq)
+    for block_item in &func_def.block.block_items {
+        match block_item {
+            BlockItem::Stmt(stmt) => {
+                let Stmt::Return(exp) = stmt;
+                let ret_val = emit_ast_exp(exp, &mut ctx);
+                ctx.emit_ret(ret_val);
+            },
+            BlockItem::Decl(decl) => {
+                for const_def in &decl.const_decl.const_defs {
+                    let ident = &const_def.ident;
+                    let val = const_def.const_val.const_exp.exp.eval(&ctx.sym);
+                    ctx.sym.insert_symbol(ident.clone(), val);
+                }
             }
-            _ => false,
         }
     }
 }
@@ -267,6 +245,7 @@ fn emit_ast_primary(p: &PrimaryExp, ctx: &mut FuncCtx) -> ir::Value {
     match p {
         PrimaryExp::Number(n) => ctx.make_int(*n),
         PrimaryExp::Paren(e) => emit_ast_exp(e, ctx),
+        PrimaryExp::LVal(lval) => ctx.make_val(lval)
     }
 }
 

@@ -2,6 +2,32 @@ pub struct CompUnit {
   pub func_def: FuncDef,
 }
 
+pub struct Decl {
+  pub const_decl: ConstDecl,
+}
+
+pub struct ConstDecl {
+  pub btype: BType,
+  pub const_defs: Vec<ConstDef>,
+}
+
+pub struct BType {
+  pub _type: String,
+}
+
+pub struct ConstDef {
+  pub ident: String,
+  pub const_val: ConstInitVal
+}
+
+pub struct ConstInitVal {
+  pub const_exp: ConstExp,
+}
+
+pub struct ConstExp {
+  pub exp: Exp,
+}
+
 pub struct FuncDef {
   pub func_type: FuncType,
   pub ident: String,
@@ -13,11 +39,20 @@ pub struct FuncType {
 }
 
 pub struct Block {
-  pub stmt: Stmt,
+  pub block_items: Vec<BlockItem>,
+}
+
+pub enum BlockItem {
+  Decl(Decl),
+  Stmt(Stmt),
 }
 
 pub enum Stmt {
   Return(Exp)
+}
+
+pub struct LVal {
+  pub ident: String,
 }
 
 pub struct Exp {
@@ -33,6 +68,7 @@ pub enum UnaryExp {
 
 pub enum PrimaryExp {
   Paren(Box<Exp>),
+  LVal(LVal),
   Number(i32),
 }
 
