@@ -38,6 +38,11 @@ struct RegAlloc {
     reg_map: HashMap<ir::Value, &'static str>,
 }
 
+struct StackFrame {
+    pub total: usize,
+    allocs: HashMap<ir::Value, usize>,
+}
+
 impl RegAlloc {
     fn new() -> Self {
         let mut free = AVAILABLE_REGS.to_vec();
@@ -54,6 +59,9 @@ impl RegAlloc {
 
     fn release(&mut self, reg: &'static str) {
         self.free.push(reg);
+        // 保证一直按顺序分配，不是那么必要
+        // self.free.sort_unstable();
+        // self.free.reverse();
     }
 
     fn bind(&mut self, v: ir::Value, reg: &'static str) {
@@ -71,16 +79,36 @@ impl RegAlloc {
     }
 }
 
+impl StackFrame {
+    fn new() -> Self {
+        Self {
+            total: 0,
+            allocs: HashMap::new(),
+        }
+    }
+
+    fn alloc_slot(&mut self, v: ir::Value) -> usize {
+        let offset = self.allocs.len() * 4;
+        self.allocs.insert(v, offset);
+        offset
+    }
+
+    fn get_slot(&mut self, v: &ir::Value) -> usize {
+        *self.allocs.get(&v).unwrap()
+    }
+}
+
 // 生成上下文：封装 writer / func / 分配器
 struct AsmCtx<'a, W: Write> {
     w: &'a mut W,
     func: &'a ir::FunctionData,
     ra: RegAlloc,
+    sf: StackFrame,
 }
 
 impl<'a, W: Write> AsmCtx<'a, W> {
     fn new(func: &'a ir::FunctionData, w: &'a mut W) -> Self {
-        Self { w, func, ra: RegAlloc::new() }
+        Self { w, func, ra: RegAlloc::new(), sf: StackFrame::new() }
     }
 
     fn emit_function(&mut self) {
@@ -90,6 +118,17 @@ impl<'a, W: Write> AsmCtx<'a, W> {
     }
 
     fn emit_block(&mut self, bb_node: &ir::layout::BasicBlockNode) {
+        // prologue
+        let mut inst_count = 0usize;
+        for &inst in bb_node.insts().keys() {
+            let v = self.func.dfg().value(inst);
+            if !v.ty().is_unit() {
+                inst_count += 1;
+            }
+        }
+        self.sf.total = inst_count * 4;
+        writeln!(self.w, "\taddi sp, sp, -{}", inst_count * 4).expect("Write error");
+        
         for &inst in bb_node.insts().keys() {
             self.emit_inst(inst);
         }
@@ -98,14 +137,13 @@ impl<'a, W: Write> AsmCtx<'a, W> {
     fn emit_inst(&mut self, inst: ir::Value) {
         let v = self.func.dfg().value(inst);
         match v.kind() {
-            ValueKind::Integer(int) => {
+            ValueKind::Integer(_int) => {
                 // 常量一般不会直接作为指令出现
-                if int.value() != 0 {
-                    let rd = self.ra.alloc();
-                    writeln!(self.w, "\tli {}, {}", rd, int.value()).expect("Write error");
-                    self.ra.bind(inst, rd);
-                }
-            }
+                panic!("Const value appear as inst");
+                let rd = self.ra.alloc();
+                writeln!(self.w, "\tli {}, {}", rd, _int.value()).expect("Write error");
+                self.ra.bind(inst, rd);
+            },
             ValueKind::Binary(bin) => {
                 let lhs = bin.lhs();
                 let rhs = bin.rhs();
@@ -115,16 +153,44 @@ impl<'a, W: Write> AsmCtx<'a, W> {
 
                 self.emit_binary(bin.op(), rd, rl, rr);
 
-                self.ra.bind(inst, rd);
                 self.ra.dec_use(lhs);
                 self.ra.dec_use(rhs);
-            }
+                
+                let offset = self.sf.alloc_slot(inst);
+                writeln!(self.w, "\tsw {}, {}(sp)", rd, offset).unwrap();
+                
+                self.ra.release(rd);
+            },
             ValueKind::Return(ret) => {
                 let v = ret.value().expect("Return without value");
                 let rv = self.reg_for(v);
                 writeln!(self.w, "\tmv a0, {}", rv).expect("Write error");
+                writeln!(self.w, "\taddi sp, sp, {}", self.sf.total).unwrap();
                 writeln!(self.w, "\tret").expect("Write error");
                 self.ra.dec_use(v);
+            },
+            ValueKind::Alloc(_alloc) => {
+                self.sf.alloc_slot(inst);
+            },
+            ValueKind::Load(load) => {
+                let src = load.src();
+                let src_offset = self.sf.get_slot(&src);
+                let rd = self.ra.alloc();
+                writeln!(self.w, "\tlw {}, {}(sp)", rd, src_offset).unwrap();
+
+                let dst_offset = self.sf.alloc_slot(inst);
+                writeln!(self.w, "\tsw {}, {}(sp)", rd, dst_offset).unwrap();
+                self.ra.release(rd);
+            },
+            ValueKind::Store(store) => {
+                let val = store.value();
+                let rv = self.reg_for(val);
+
+                let dst = store.dest();
+                let dst_offset = self.sf.get_slot(&dst);
+                
+                writeln!(self.w, "\tsw {}, {}(sp)", rv, dst_offset).unwrap();
+                self.ra.dec_use(val);
             }
             _ => unreachable!("Unsupported value kind"),
         }
@@ -184,7 +250,25 @@ impl<'a, W: Write> AsmCtx<'a, W> {
                     self.ra.bind(v, rd);
                     rd
                 }
-            }
+            },
+            ValueKind::Load(_load) => {
+                // let src = load.src();
+                let src_offset = self.sf.get_slot(&v);
+                let rd = self.ra.alloc();
+                writeln!(self.w, "\tlw {}, {}(sp)", rd, src_offset).expect("Write error");
+                self.ra.bind(v, rd);
+                rd
+            },
+            ValueKind::Binary(_) => {
+                let offset = self.sf.get_slot(&v);
+                let rd = self.ra.alloc();
+                writeln!(self.w, "\tlw {}, {}(sp)", rd, offset).expect("Write error");
+                self.ra.bind(v, rd);
+                rd
+            },
+            ValueKind::Store(_) => {
+                panic!("store value kind exist")
+            },
             _ => panic!("Operand not in register and not an immediate"),
         }
     }

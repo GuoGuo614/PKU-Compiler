@@ -51,10 +51,13 @@ cargo build --manifest-path "Cargo.toml的路径" --release
 
 默认情况下, 你无需进行任何更改, 只需要确保项目的 manifest 文件名为 `Cargo.toml` 即可.
 
-启动 docker: docker run -it --rm -v 项目目录:/root/compiler maxxing/compiler-dev \
+启动 docker: docker run -it --rm -v $(pwd):/root/compiler maxxing/compiler-dev \
 
 更新 rustc, 以适配评测机：(找个机会更新 Dockerfile，每次都需要重配)
-    export RUSTUP_DIST_SERVER=https://static.rust-lang.org 
-    export RUSTUP_UPDATE_ROOT=https://static.rust-lang.org/rustup
+    export RUSTUP_DIST_SERVER=https://static.rust-lang.org && export RUSTUP_UPDATE_ROOT=https://static.rust-lang.org/rustup
     rustup update 1.82
     rustup default 1.82
+
+测试：
+    autotest -koopa -s lv? /root/compiler
+    autotest -riscv -s lv? /root/compiler
