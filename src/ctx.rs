@@ -1,7 +1,8 @@
 use crate::symbol::SymbolTable;
 use crate::ast::LVal;
-use koopa::ir as ir;
+use koopa::ir::{self as ir, Type};
 use koopa::ir::builder::{LocalInstBuilder, ValueBuilder};
+use crate::symbol::Sym;
 
 // 轻量 IR 上下文，内部方法只做“短借用”
 // 我的天哪 GPT 大人
@@ -16,9 +17,33 @@ impl<'a> FuncCtx<'a> {
         self.func.dfg_mut().new_value().integer(v)
     }
 
-    pub fn make_val(&mut self, v: &LVal) -> ir::Value {
-        let number = self.sym.get_symbol_value(&v.ident);
-        self.func.dfg_mut().new_value().integer(*number.unwrap())
+    pub fn make_val(&mut self, v: &LVal) -> Option<ir::Value> {
+        match self.sym.get_const_alloc(&v.ident).unwrap() {
+            Sym::Const(number) => {
+                Some(self.func.dfg_mut().new_value().integer(*number))
+            },
+            Sym::Var(alloc) => {
+                Some(self.make_load(*alloc))
+            }
+        }
+    }
+
+    pub fn make_alloc(&mut self) -> ir::Value {
+        let v = self.func.dfg_mut().new_value().alloc(Type::get_i32());
+        self.push_inst(v);
+        v
+    }
+
+    pub fn make_store(&mut self, alloc: ir::Value, val: ir::Value) -> ir::Value {
+        let v = self.func.dfg_mut().new_value().store(val, alloc);
+        self.push_inst(v);
+        v
+    }
+
+    pub fn make_load(&mut self, src: ir::Value) -> ir::Value {
+        let v = self.func.dfg_mut().new_value().load(src);
+        self.push_inst(v);
+        v
     }
 
     pub fn emit_binary(&mut self, op: ir::BinaryOp, lhs: ir::Value, rhs: ir::Value) -> ir::Value {

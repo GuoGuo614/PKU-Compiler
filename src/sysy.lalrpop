@@ -30,7 +30,10 @@ FuncType: FuncType = "int" => FuncType {
 };
 
 // Declarations
-Decl: Decl = <const_decl: ConstDecl> => Decl { const_decl };
+Decl: Decl = {
+  <const_decl: ConstDecl> => Decl::Const(const_decl),
+  <var_decl: VarDecl>     => Decl::Var(var_decl),
+};
 
 ConstDecl: ConstDecl = "const" <btype: BType> <defs: ConstDefList> ";" => ConstDecl {
     btype,
@@ -56,6 +59,27 @@ ConstInitVal: ConstInitVal = <ce: ConstExp> => ConstInitVal { const_exp: ce };
 
 ConstExp: ConstExp = <exp: Exp> => ConstExp { exp };
 
+// VarDecl and VarDef
+VarDecl: VarDecl = <btype: BType> <defs: VarDefList> ";" => VarDecl {
+  b_type: btype,
+  var_defs: defs,
+};
+
+VarDefList: Vec<VarDef> = {
+  <first: VarDef> <rest: ("," <VarDef>)*> => {
+    let mut v = vec![first];
+    for d in rest { v.push(d); }
+    v
+  }
+};
+
+VarDef: VarDef = {
+  <ident: Ident> => VarDef::Decl(ident),
+  <ident: Ident> "=" <init: InitVal> => VarDef::Init(ident, init),
+};
+
+InitVal: InitVal = <exp: Exp> => InitVal { exp };
+
 // Block and items
 Block: Block = "{" <block_items: BlockItemList> "}" => Block { block_items };
 
@@ -72,7 +96,11 @@ BlockItem: BlockItem = {
   <stmt: Stmt> => BlockItem::Stmt(stmt),
 };
 
-Stmt: Stmt = "return" <exp: Exp> ";" => Stmt::Return(exp);
+// Statements
+Stmt: Stmt = {
+  <lval: LVal> "=" <exp: Exp> ";" => Stmt::Assign(lval, exp),
+  "return" <exp: Exp> ";" => Stmt::Return(exp),
+};
 
 Exp: Exp = <lor_exp: LOrExp> => Exp {
   lor_exp

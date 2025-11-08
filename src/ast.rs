@@ -2,8 +2,9 @@ pub struct CompUnit {
   pub func_def: FuncDef,
 }
 
-pub struct Decl {
-  pub const_decl: ConstDecl,
+pub enum Decl {
+  Const(ConstDecl),
+  Var(VarDecl)
 }
 
 pub struct ConstDecl {
@@ -22,6 +23,20 @@ pub struct ConstDef {
 
 pub struct ConstInitVal {
   pub const_exp: ConstExp,
+}
+
+pub struct VarDecl {
+  pub b_type: BType,
+  pub var_defs: Vec<VarDef>,
+}
+
+pub enum VarDef {
+  Decl(String),
+  Init(String, InitVal),
+}
+
+pub struct InitVal {
+  pub exp: Exp,
 }
 
 pub struct ConstExp {
@@ -48,6 +63,7 @@ pub enum BlockItem {
 }
 
 pub enum Stmt {
+  Assign(LVal, Exp),
   Return(Exp)
 }
 

@@ -81,16 +81,36 @@ fn parse_function_body(
 
     for block_item in &func_def.block.block_items {
         match block_item {
-            BlockItem::Stmt(stmt) => {
-                let Stmt::Return(exp) = stmt;
-                let ret_val = emit_ast_exp(exp, &mut ctx);
-                ctx.emit_ret(ret_val);
+            BlockItem::Stmt(Stmt::Return(exp)) => {
+                let v = emit_ast_exp(exp, &mut ctx);
+                ctx.emit_ret(v);
             },
-            BlockItem::Decl(decl) => {
-                for const_def in &decl.const_decl.const_defs {
-                    let ident = &const_def.ident;
-                    let val = const_def.const_val.const_exp.exp.eval(&ctx.sym);
-                    ctx.sym.insert_symbol(ident.clone(), val);
+            BlockItem::Stmt(Stmt::Assign(lval, exp)) => {
+                // 可优化：先尝试常量求值
+                let rhs = emit_ast_exp(exp, &mut ctx);
+                let alloc = ctx.sym.get_alloc(&lval.ident).unwrap();
+                ctx.make_store(*alloc, rhs);
+            },
+            BlockItem::Decl(Decl::Const(decl)) => {
+                for c in &decl.const_defs {
+                    let v = c.const_val.const_exp.exp.eval(&ctx.sym);
+                    ctx.sym.insert_const(c.ident.clone(), v);
+                }
+            },
+            BlockItem::Decl(Decl::Var(decl)) => {
+                for c in &decl.var_defs {
+                    match c {
+                        VarDef::Decl(name) => {
+                            let alloc = ctx.make_alloc();
+                            ctx.sym.insert_var(name, alloc);
+                        },
+                        VarDef::Init(name, val) => {
+                            let alloc = ctx.make_alloc();
+                            ctx.sym.insert_var(name, alloc);
+                            let rhs = emit_ast_exp(&val.exp, &mut ctx);
+                            ctx.make_store(alloc, rhs);
+                        }
+                    }
                 }
             }
         }
@@ -245,7 +265,7 @@ fn emit_ast_primary(p: &PrimaryExp, ctx: &mut FuncCtx) -> ir::Value {
     match p {
         PrimaryExp::Number(n) => ctx.make_int(*n),
         PrimaryExp::Paren(e) => emit_ast_exp(e, ctx),
-        PrimaryExp::LVal(lval) => ctx.make_val(lval)
+        PrimaryExp::LVal(lval) => ctx.make_val(lval).unwrap()
     }
 }
 
