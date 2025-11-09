@@ -79,41 +79,72 @@ fn parse_function_body(
     // 3) 用上下文封装对 func 的操作，避免重叠借用
     let mut ctx = FuncCtx { func, bb, sym };
 
-    for block_item in &func_def.block.block_items {
-        match block_item {
-            BlockItem::Stmt(Stmt::Return(exp)) => {
-                let v = emit_ast_exp(exp, &mut ctx);
-                ctx.emit_ret(v);
-            },
-            BlockItem::Stmt(Stmt::Assign(lval, exp)) => {
-                // 可优化：先尝试常量求值
-                let rhs = emit_ast_exp(exp, &mut ctx);
-                let alloc = ctx.sym.get_var(&lval.ident)
-                    .expect("Variable not found, is that a const or not defined?");
-                ctx.make_store(*alloc, rhs);
-            },
-            BlockItem::Decl(Decl::Const(decl)) => {
-                for c in &decl.const_defs {
-                    let v = c.const_val.const_exp.exp.eval(&ctx.sym);
-                    ctx.sym.insert_const(c.ident.clone(), v);
-                }
-            },
-            BlockItem::Decl(Decl::Var(decl)) => {
-                for c in &decl.var_defs {
-                    match c {
-                        VarDef::Decl(name) => {
-                            let alloc = ctx.make_alloc();
-                            ctx.sym.insert_var(name, alloc);
-                        },
-                        VarDef::Init(name, val) => {
-                            let alloc = ctx.make_alloc();
-                            ctx.sym.insert_var(name, alloc);
-                            let rhs = emit_ast_exp(&val.exp, &mut ctx);
-                            ctx.make_store(alloc, rhs);
-                        }
+    process_block(&func_def.block, &mut ctx);
+}
+
+fn process_block(block: &Block, ctx: &mut FuncCtx) {
+    ctx.sym.enter_scope();
+
+    for block_item in &block.block_items {
+        process_block_item(block_item, ctx);
+    }
+
+    ctx.sym.exit_scope();
+}
+
+fn process_block_item(item: &BlockItem, ctx: &mut FuncCtx) {
+    match item {
+        BlockItem::Stmt(stmt) => {
+            process_stmt(stmt, ctx);
+        },
+        BlockItem::Decl(Decl::Const(decl)) => {
+            for c in &decl.const_defs {
+                let v = c.const_val.const_exp.exp.eval(&ctx.sym);
+                ctx.sym.insert_const(c.ident.clone(), v);
+            }
+        },
+        BlockItem::Decl(Decl::Var(decl)) => {
+            for c in &decl.var_defs {
+                match c {
+                    VarDef::Decl(name) => {
+                        let alloc = ctx.make_alloc();
+                        ctx.sym.insert_var(name, alloc);
+                    },
+                    VarDef::Init(name, val) => {
+                        let alloc = ctx.make_alloc();
+                        ctx.sym.insert_var(name, alloc);
+                        let rhs = emit_ast_exp(&val.exp, ctx);
+                        ctx.make_store(alloc, rhs);
                     }
                 }
             }
+        }
+    }
+}
+
+fn process_stmt(stmt: &Stmt, ctx: &mut FuncCtx) {
+    match stmt {
+        Stmt::Return(exp) => {
+            let v = exp.as_ref()
+                .map(|e| emit_ast_exp(e, ctx));
+            ctx.emit_ret(v);
+        },
+        Stmt::Assign(lval, exp) => {
+            // 可优化：先尝试常量求值
+            let rhs = emit_ast_exp(exp, ctx);
+            let alloc = ctx.sym.get_var(&lval.ident)
+                .expect("Variable not found");
+            ctx.make_store(*alloc, rhs);
+        },
+        Stmt::Exp(Some(_exp)) => {
+            // Do nothing. Is it OK?
+            // emit_ast_exp(_exp, ctx);
+        },
+        Stmt::Exp(None) => {
+            // Do nothing.
+        },
+        Stmt::Block(block) => {
+            process_block(block, ctx);
         }
     }
 }

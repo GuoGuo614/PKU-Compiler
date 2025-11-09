@@ -83,13 +83,7 @@ InitVal: InitVal = <exp: Exp> => InitVal { exp };
 // Block and items
 Block: Block = "{" <block_items: BlockItemList> "}" => Block { block_items };
 
-BlockItemList: Vec<BlockItem> = {
-  <first: BlockItem> <rest: (<BlockItem>)*> => {
-    let mut v = vec![first];
-    for d in rest { v.push(d); }
-    v
-  }
-};
+BlockItemList: Vec<BlockItem> = <items: (<BlockItem>)*> => items;
 
 BlockItem: BlockItem = {
   <decl: Decl> => BlockItem::Decl(decl),
@@ -99,7 +93,9 @@ BlockItem: BlockItem = {
 // Statements
 Stmt: Stmt = {
   <lval: LVal> "=" <exp: Exp> ";" => Stmt::Assign(lval, exp),
-  "return" <exp: Exp> ";" => Stmt::Return(exp),
+  <exp: Exp?> ";" => Stmt::Exp(exp),
+  <block: Block> => Stmt::Block(block),
+  "return" <exp: Exp?> ";" => Stmt::Return(exp),
 };
 
 Exp: Exp = <lor_exp: LOrExp> => Exp {

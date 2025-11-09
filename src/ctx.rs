@@ -52,8 +52,8 @@ impl<'a> FuncCtx<'a> {
         v
     }
 
-    pub fn emit_ret(&mut self, v: ir::Value) {
-        let inst = self.func.dfg_mut().new_value().ret(Some(v));
+    pub fn emit_ret(&mut self, v: Option<ir::Value>) {
+        let inst = self.func.dfg_mut().new_value().ret(v);
         self.push_inst(inst);
     }
 

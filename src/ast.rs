@@ -64,7 +64,9 @@ pub enum BlockItem {
 
 pub enum Stmt {
   Assign(LVal, Exp),
-  Return(Exp)
+  Exp(Option<Exp>),
+  Block(Block),
+  Return(Option<Exp>)
 }
 
 pub struct LVal {
