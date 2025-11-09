@@ -76,7 +76,7 @@ fn parse_function_body(
     };
 
     // 3) 用上下文封装对 func 的操作，避免重叠借用
-    let mut ctx = FuncCtx { func, bb, sym };
+    let mut ctx = FuncCtx { func, bb, sym, bb_counter: 0 };
 
     process_block(&func_def.block, &mut ctx);
 }
@@ -137,7 +137,8 @@ fn process_stmt(stmt: &Stmt, ctx: &mut FuncCtx) {
         },
         Stmt::Exp(Some(_exp)) => {
             // Do nothing. Is it OK?
-            // emit_ast_exp(_exp, ctx);
+            // Later I will use it.
+            emit_ast_exp(_exp, ctx);
         },
         Stmt::Exp(None) => {
             // Do nothing.
@@ -157,9 +158,9 @@ fn process_if(
     else_stmt: Option<&Stmt>,
     ctx: &mut FuncCtx,
 ) {
-    let bb_then = ctx.new_bb(String::from("%then"));
-    let bb_else = else_stmt.as_ref().map(|_| ctx.new_bb("%else".to_string()));
-    let bb_end = ctx.new_bb("%end".to_string());
+    let bb_then = ctx.new_bb("%then");
+    let bb_else = else_stmt.as_ref().map(|_| ctx.new_bb("%else"));
+    let bb_end = ctx.new_bb("%end");
 
     let exp_val = emit_ast_exp(cond, ctx);
     // let bool_val = to_bool(ctx, exp_val);

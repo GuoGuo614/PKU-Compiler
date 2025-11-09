@@ -8,11 +8,19 @@ use crate::symbol::Sym;
 pub struct FuncCtx<'a> {
     pub func: &'a mut ir::FunctionData,
     pub bb: ir::BasicBlock,
-    pub sym: &'a mut SymbolTable
+    pub sym: &'a mut SymbolTable,
+    pub bb_counter: usize,
 }
 
 impl<'a> FuncCtx<'a> {
-    pub fn new_bb(&mut self, name: String) -> ir::BasicBlock {
+    pub fn gen_bb_name(&mut self, prefix: &str) -> String {
+        let name = format!("{}{}", prefix, self.bb_counter);
+        self.bb_counter += 1;
+        name
+    }
+    
+    pub fn new_bb(&mut self, prefix: &str) -> ir::BasicBlock {
+        let name = self.gen_bb_name(prefix);
         let bb = self.func.dfg_mut().new_bb().basic_block(Some(name));
         self.func.layout_mut().bbs_mut()
             .push_key_back(bb)

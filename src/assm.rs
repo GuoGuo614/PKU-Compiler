@@ -111,12 +111,13 @@ impl<'a, W: Write> AsmCtx<'a, W> {
         Self { w, func, ra: RegAlloc::new(), sf: StackFrame::new() }
     }
 
-    fn get_bb_name(&self, bb: ir::BasicBlock) -> &str {
-        let name = {
-            let bb_data = self.func.dfg().bbs().get(&bb);
-            bb_data.unwrap().name()
-        };
-        name.as_ref().unwrap().strip_prefix('%').unwrap()
+    fn get_bb_name(&self, bb: ir::BasicBlock) -> String {
+        self.func.dfg()
+            .bb(bb)
+            .name()
+            .as_ref()
+            .map(|s| s.trim_start_matches('%').to_string())
+            .unwrap()
     }
 
     fn emit_function(&mut self) {
@@ -134,7 +135,7 @@ impl<'a, W: Write> AsmCtx<'a, W> {
         writeln!(self.w, "\taddi sp, sp, -{}", inst_count * 4).expect("Write error");
         
         for (&bb, node) in self.func.layout().bbs() {
-            let name  = self.get_bb_name(bb).to_string();
+            let name  = self.get_bb_name(bb);
             writeln!(self.w, "{}:", name).expect("Write error");
             
             self.emit_block(node);
@@ -205,15 +206,16 @@ impl<'a, W: Write> AsmCtx<'a, W> {
             ValueKind::Branch(branch) => {
                 let cond = branch.cond();
                 let rcond = self.reg_for(cond);
-                let then_name = self.get_bb_name(branch.true_bb()).to_string();
+                let then_name = self.get_bb_name(branch.true_bb());
                 writeln!(self.w, "\tbnez {}, {}", rcond, then_name).unwrap();
 
-                let else_name = self.get_bb_name(branch.false_bb()).to_string();
+                let else_name = self.get_bb_name(branch.false_bb());
                 writeln!(self.w, "\tj {}", else_name).unwrap();
+                self.ra.dec_use(cond);
             },
             ValueKind::Jump(jump) => {
                 let target = jump.target();
-                let target_name = self.get_bb_name(target).to_string();
+                let target_name = self.get_bb_name(target);
                 writeln!(self.w, "\tj {}", target_name).expect("Write error");
             },
             _ => unreachable!("Unsupported value kind"),
