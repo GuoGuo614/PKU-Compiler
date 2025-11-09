@@ -111,24 +111,37 @@ impl<'a, W: Write> AsmCtx<'a, W> {
         Self { w, func, ra: RegAlloc::new(), sf: StackFrame::new() }
     }
 
-    fn emit_function(&mut self) {
-        for (&_bb, node) in self.func.layout().bbs() {
-            self.emit_block(node);
-        }
+    fn get_bb_name(&self, bb: ir::BasicBlock) -> &str {
+        let name = {
+            let bb_data = self.func.dfg().bbs().get(&bb);
+            bb_data.unwrap().name()
+        };
+        name.as_ref().unwrap().strip_prefix('%').unwrap()
     }
 
-    fn emit_block(&mut self, bb_node: &ir::layout::BasicBlockNode) {
+    fn emit_function(&mut self) {
         // prologue
         let mut inst_count = 0usize;
-        for &inst in bb_node.insts().keys() {
-            let v = self.func.dfg().value(inst);
-            if !v.ty().is_unit() {
-                inst_count += 1;
+        for (&_bb, node) in self.func.layout().bbs() {
+            for &inst in node.insts().keys() {
+                let v = self.func.dfg().value(inst);
+                if !v.ty().is_unit() {
+                    inst_count += 1;
+                }
             }
         }
         self.sf.total = inst_count * 4;
         writeln!(self.w, "\taddi sp, sp, -{}", inst_count * 4).expect("Write error");
         
+        for (&bb, node) in self.func.layout().bbs() {
+            let name  = self.get_bb_name(bb).to_string();
+            writeln!(self.w, "{}:", name).expect("Write error");
+            
+            self.emit_block(node);
+        }
+    }
+
+    fn emit_block(&mut self, bb_node: &ir::layout::BasicBlockNode) {
         for &inst in bb_node.insts().keys() {
             self.emit_inst(inst);
         }
@@ -181,14 +194,28 @@ impl<'a, W: Write> AsmCtx<'a, W> {
             },
             ValueKind::Store(store) => {
                 let val = store.value();
-                let rv = self.reg_for(val);
+                let rval = self.reg_for(val);
 
                 let dst = store.dest();
                 let dst_offset = self.sf.get_slot(&dst);
                 
-                writeln!(self.w, "\tsw {}, {}(sp)", rv, dst_offset).unwrap();
+                writeln!(self.w, "\tsw {}, {}(sp)", rval, dst_offset).unwrap();
                 self.ra.dec_use(val);
-            }
+            },
+            ValueKind::Branch(branch) => {
+                let cond = branch.cond();
+                let rcond = self.reg_for(cond);
+                let then_name = self.get_bb_name(branch.true_bb()).to_string();
+                writeln!(self.w, "\tbnez {}, {}", rcond, then_name).unwrap();
+
+                let else_name = self.get_bb_name(branch.false_bb()).to_string();
+                writeln!(self.w, "\tj {}", else_name).unwrap();
+            },
+            ValueKind::Jump(jump) => {
+                let target = jump.target();
+                let target_name = self.get_bb_name(target).to_string();
+                writeln!(self.w, "\tj {}", target_name).expect("Write error");
+            },
             _ => unreachable!("Unsupported value kind"),
         }
     }
