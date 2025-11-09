@@ -18,7 +18,7 @@ impl<'a> FuncCtx<'a> {
     }
 
     pub fn make_val(&mut self, v: &LVal) -> Option<ir::Value> {
-        match self.sym.get_const_alloc(&v.ident).unwrap() {
+        match self.sym.get_const_var(&v.ident).expect("Symbol not found") {
             Sym::Const(number) => {
                 Some(self.func.dfg_mut().new_value().integer(*number))
             },

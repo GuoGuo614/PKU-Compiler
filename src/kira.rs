@@ -88,7 +88,8 @@ fn parse_function_body(
             BlockItem::Stmt(Stmt::Assign(lval, exp)) => {
                 // 可优化：先尝试常量求值
                 let rhs = emit_ast_exp(exp, &mut ctx);
-                let alloc = ctx.sym.get_alloc(&lval.ident).unwrap();
+                let alloc = ctx.sym.get_var(&lval.ident)
+                    .expect("Variable not found, is that a const or not defined?");
                 ctx.make_store(*alloc, rhs);
             },
             BlockItem::Decl(Decl::Const(decl)) => {

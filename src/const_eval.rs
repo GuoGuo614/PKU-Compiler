@@ -78,7 +78,8 @@ impl EvalConst for PrimaryExp {
         match self {
             PrimaryExp::Number(n) => *n,
             PrimaryExp::Paren(e) => e.eval(sym),
-            PrimaryExp::LVal(lv) => sym.get_const(&lv.ident).copied().expect("const not found"),
+            PrimaryExp::LVal(lv) => sym.get_const(&lv.ident).copied()
+                .expect("const not found, is that a variable?"),
         }
     }
 }

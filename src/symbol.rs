@@ -19,10 +19,16 @@ impl SymbolTable {
     }
 
     pub fn insert_const(&mut self, name: String, value: i32) {
+        if self.symbol_exist(&name) {
+            panic!("Symbol already exists!")
+        }
         self.map.insert(name, Sym::Const(value));
     }
 
     pub fn insert_var(&mut self, name: &str, alloc: Value) {
+        if self.symbol_exist(name) {
+            panic!("Symbol already exists!")
+        }
         self.map.insert(name.to_string(), Sym::Var(alloc));
     }
 
@@ -30,11 +36,11 @@ impl SymbolTable {
         self.map.contains_key(name)
     }
 
-    pub fn get_const_alloc(&self, name: &str) -> Option<&Sym> {
+    pub fn get_const_var(&self, name: &str) -> Option<&Sym> {
         self.map.get(name)
     }
 
-    pub fn get_alloc(&self, name: &str) -> Option<&Value> {
+    pub fn get_var(&self, name: &str) -> Option<&Value> {
         if let Sym::Var(alloc) = self.map.get(name).unwrap() {
             Some(alloc)
         } else {

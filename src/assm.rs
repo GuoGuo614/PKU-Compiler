@@ -140,9 +140,6 @@ impl<'a, W: Write> AsmCtx<'a, W> {
             ValueKind::Integer(_int) => {
                 // 常量一般不会直接作为指令出现
                 panic!("Const value appear as inst");
-                let rd = self.ra.alloc();
-                writeln!(self.w, "\tli {}, {}", rd, _int.value()).expect("Write error");
-                self.ra.bind(inst, rd);
             },
             ValueKind::Binary(bin) => {
                 let lhs = bin.lhs();
@@ -235,7 +232,7 @@ impl<'a, W: Write> AsmCtx<'a, W> {
         }.expect("Write error");
     }
 
-    // 获取操作数寄存器：已绑定直接用；0 用 x0；其他立即数当场 li
+    // 获取操作数寄存器
     fn reg_for(&mut self, v: ir::Value) -> &'static str {
         if let Some(r) = self.ra.reg_of(v) {
             return r;
@@ -251,7 +248,7 @@ impl<'a, W: Write> AsmCtx<'a, W> {
                     rd
                 }
             },
-            ValueKind::Load(_load) => {
+            ValueKind::Load(_) => {
                 // let src = load.src();
                 let src_offset = self.sf.get_slot(&v);
                 let rd = self.ra.alloc();
