@@ -68,7 +68,6 @@ fn parse_function_body(
     let bb = {
         let dfg = func.dfg_mut();
         let bb = dfg.new_bb().basic_block(Some(String::from("%entry")));
-        // 2) 短借用 layout 将 bb 放入布局
         {
             let layout = func.layout_mut();
             layout.bbs_mut().push_key_back(bb).expect("Failed to push basic block");
@@ -145,8 +144,40 @@ fn process_stmt(stmt: &Stmt, ctx: &mut FuncCtx) {
         },
         Stmt::Block(block) => {
             process_block(block, ctx);
-        }
+        },
+        Stmt::If(cond, body, else_body) => {
+            process_if(cond, body, else_body.as_deref(), ctx);
+        },
     }
+}
+
+fn process_if(
+    cond: &Exp,
+    then_stmt: &Stmt,
+    else_stmt: Option<&Stmt>,
+    ctx: &mut FuncCtx,
+) {
+    let bb_then = ctx.new_bb(String::from("%then"));
+    let bb_else = else_stmt.as_ref().map(|_| ctx.new_bb("%else".to_string()));
+    let bb_end = ctx.new_bb("%end".to_string());
+
+    let exp_val = emit_ast_exp(cond, ctx);
+    // let bool_val = to_bool(ctx, exp_val);
+
+    let target_false = bb_else.unwrap_or(bb_end);
+    ctx.make_branch(exp_val, bb_then, target_false);
+
+    ctx.switch_to_bb(bb_then);
+    process_stmt(then_stmt, ctx);
+    ctx.make_jump(bb_end);
+
+    if let Some((bb, stmt)) = bb_else.zip(else_stmt) {
+        ctx.switch_to_bb(bb);
+        process_stmt(stmt, ctx);
+        ctx.make_jump(bb_end);
+    }
+
+    ctx.switch_to_bb(bb_end);
 }
 
 // 表达式生成（基于上下文）
@@ -309,6 +340,6 @@ pub fn values_parse_from_ast() -> Vec<ir::entities::ValueData> {
 pub fn functype_parse_from_ast(functype: &FuncType) -> ir::Type {
     match functype._type.as_str() {
         "int" => ir::Type::get_i32(),
-        _ => ir::Type::get_i32()
+        _ => panic!("Unknown function types.")
     }
 }

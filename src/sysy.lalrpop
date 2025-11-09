@@ -90,13 +90,30 @@ BlockItem: BlockItem = {
   <stmt: Stmt> => BlockItem::Stmt(stmt),
 };
 
-// Statements
 Stmt: Stmt = {
+  <matched: MatchedStmt> => matched,
+  <unmatched: UnmatchedStmt> => unmatched,
+};
+
+// Statements
+MatchedStmt: Stmt = {
   <lval: LVal> "=" <exp: Exp> ";" => Stmt::Assign(lval, exp),
   <exp: Exp?> ";" => Stmt::Exp(exp),
   <block: Block> => Stmt::Block(block),
+  "if" "(" <exp: Exp> ")" <body: MatchedStmt> "else" <else_body: MatchedStmt> => {
+    Stmt::If(exp, Box::new(body), Some(Box::new(else_body)))
+  },
   "return" <exp: Exp?> ";" => Stmt::Return(exp),
 };
+
+UnmatchedStmt: Stmt = {
+  "if" "(" <exp: Exp> ")" <body: Stmt> => {
+    Stmt::If(exp, Box::new(body), None)
+  },
+  "if" "(" <exp: Exp> ")" <body: MatchedStmt> "else" <else_body: UnmatchedStmt> => {
+    Stmt::If(exp, Box::new(body), Some(Box::new(else_body)))
+  },
+}
 
 Exp: Exp = <lor_exp: LOrExp> => Exp {
   lor_exp

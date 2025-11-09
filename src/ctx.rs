@@ -1,11 +1,10 @@
 use crate::symbol::SymbolTable;
 use crate::ast::LVal;
 use koopa::ir::{self as ir, Type};
-use koopa::ir::builder::{LocalInstBuilder, ValueBuilder};
+use koopa::ir::builder::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder};
 use crate::symbol::Sym;
 
-// 轻量 IR 上下文，内部方法只做“短借用”
-// 我的天哪 GPT 大人
+// 轻量 IR 上下文，内部方法只做短借用
 pub struct FuncCtx<'a> {
     pub func: &'a mut ir::FunctionData,
     pub bb: ir::BasicBlock,
@@ -13,6 +12,14 @@ pub struct FuncCtx<'a> {
 }
 
 impl<'a> FuncCtx<'a> {
+    pub fn new_bb(&mut self, name: String) -> ir::BasicBlock {
+        let bb = self.func.dfg_mut().new_bb().basic_block(Some(name));
+        self.func.layout_mut().bbs_mut()
+            .push_key_back(bb)
+            .expect("Failed to push basic block");
+        bb
+    }
+    
     pub fn make_int(&mut self, v: i32) -> ir::Value {
         self.func.dfg_mut().new_value().integer(v)
     }
@@ -34,16 +41,34 @@ impl<'a> FuncCtx<'a> {
         v
     }
 
-    pub fn make_store(&mut self, alloc: ir::Value, val: ir::Value) -> ir::Value {
+    pub fn make_store(&mut self, alloc: ir::Value, val: ir::Value) {
         let v = self.func.dfg_mut().new_value().store(val, alloc);
         self.push_inst(v);
-        v
     }
 
     pub fn make_load(&mut self, src: ir::Value) -> ir::Value {
         let v = self.func.dfg_mut().new_value().load(src);
         self.push_inst(v);
         v
+    }
+
+    pub fn make_branch(
+        &mut self, 
+        cond: ir::Value, 
+        true_bb: ir::BasicBlock, 
+        false_bb: ir::BasicBlock
+    ) {
+        let v = self.func.dfg_mut().new_value().branch(cond, true_bb, false_bb);
+        self.push_inst(v);
+    }
+
+    pub fn make_jump(&mut self, target: ir::BasicBlock) {
+        let v = self.func.dfg_mut().new_value().jump(target);
+        self.push_inst(v);
+    }
+
+    pub fn switch_to_bb(&mut self, new_bb: ir::BasicBlock) {
+        self.bb = new_bb;
     }
 
     pub fn emit_binary(&mut self, op: ir::BinaryOp, lhs: ir::Value, rhs: ir::Value) -> ir::Value {
