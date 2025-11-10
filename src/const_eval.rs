@@ -1,3 +1,5 @@
+use core::panic;
+
 use crate::ast::*;
 use crate::symbol::SymbolTable;
 
@@ -70,6 +72,7 @@ impl EvalConst for UnaryExp {
             UnaryExp::Positive(u) =>  u.eval(sym),
             UnaryExp::Negative(u) => -u.eval(sym),
             UnaryExp::Not(u) => (u.eval(sym) == 0) as i32,
+            UnaryExp::FuncCall(_, _) => panic!("Define a const by calling function!"),
         }
     }
 }

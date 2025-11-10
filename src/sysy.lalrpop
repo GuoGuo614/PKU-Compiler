@@ -13,20 +13,36 @@ match {
 
 // 定义 CompUnit, 其返回值类型为 CompUnit
 // parser 在解析完成后的行为是返回 FuncDef 的值
-pub CompUnit: CompUnit = <func_def: FuncDef> => CompUnit {
+pub CompUnit: CompUnit = <comp_unit: CompUnit?> <func_def: FuncDef> => CompUnit {
+    comp_unit: Box::new(comp_unit),
     func_def,
 };
 
 FuncDef: FuncDef = {
-  <func_type: FuncType> <ident: Ident> "(" ")" <block: Block> => FuncDef {
+  <func_type: FuncType> <ident: Ident> "(" <params: FuncFParams?> ")" <block: Block> => FuncDef {
     func_type,
     ident,
+    params,
     block,
   }
 }
 
-FuncType: FuncType = "int" => FuncType {
-    _type: "int".to_string()
+FuncType: FuncType = {
+  "int" => FuncType::Int,
+  "void" => FuncType::Void,
+};
+
+FuncFParams: FuncFParams = {
+  <first: FuncFParam> <rest: ("," <FuncFParam>)*> => {
+    let mut params = vec![first];
+    for param in rest { params.push(param); }
+    FuncFParams { params }
+  }
+};
+
+FuncFParam: FuncFParam = <b_type: BType> <ident: Ident> => FuncFParam {
+  b_type,
+  ident,
 };
 
 // Declarations
@@ -125,9 +141,18 @@ Exp: Exp = <lor_exp: LOrExp> => Exp {
 
 UnaryExp: UnaryExp = {
   <primary_exp: PrimaryExp> => UnaryExp::Primary(primary_exp),
+  <ident: Ident> "(" <rparams: FuncRParams?> ")" => UnaryExp::FuncCall(ident, rparams),
   "+" <unary_exp: UnaryExp> => UnaryExp::Positive(Box::new(unary_exp)),
   "-" <unary_exp: UnaryExp> => UnaryExp::Negative(Box::new(unary_exp)),
   "!" <unary_exp: UnaryExp> => UnaryExp::Not(Box::new(unary_exp)),
+};
+
+FuncRParams: FuncRParams = {
+  <first: Exp> <rest: ("," <Exp>)*> => {
+    let mut params = vec![first];
+    for param in rest { params.push(param); }
+    FuncRParams { params }
+  }
 };
 
 // LVal and PrimaryExp extension

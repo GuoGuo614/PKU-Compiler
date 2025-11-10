@@ -1,4 +1,5 @@
 pub struct CompUnit {
+  pub comp_unit: Box<Option<CompUnit>>,
   pub func_def: FuncDef,
 }
 
@@ -46,11 +47,22 @@ pub struct ConstExp {
 pub struct FuncDef {
   pub func_type: FuncType,
   pub ident: String,
+  pub params: Option<FuncFParams>,
   pub block: Block,
 }
 
-pub struct FuncType {
-  pub _type: String,
+pub enum FuncType {
+  Int,
+  Void,
+}
+
+pub struct FuncFParams {
+  pub params: Vec<FuncFParam>,
+}
+
+pub struct FuncFParam {
+  pub b_type: BType,
+  pub ident: String,
 }
 
 pub struct Block {
@@ -83,9 +95,14 @@ pub struct Exp {
 
 pub enum UnaryExp {
   Primary(PrimaryExp),
+  FuncCall(String, Option<FuncRParams>),
   Positive(Box<UnaryExp>),
   Negative(Box<UnaryExp>),
   Not(Box<UnaryExp>),
+}
+
+pub struct FuncRParams {
+  pub params: Vec<Exp>,
 }
 
 pub enum PrimaryExp {

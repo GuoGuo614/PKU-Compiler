@@ -1,8 +1,9 @@
+use core::panic;
 use std::collections::VecDeque;
 
 use crate::symbol::SymbolTable;
 use crate::ast::LVal;
-use koopa::ir::{self as ir, Type};
+use koopa::ir::{self as ir, Type, Value};
 use koopa::ir::builder::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder};
 use crate::symbol::Sym;
 
@@ -41,12 +42,15 @@ impl<'a> FuncCtx<'a> {
     }
 
     pub fn make_val(&mut self, v: &LVal) -> Option<ir::Value> {
-        match self.sym.get_const_var(&v.ident).expect("Symbol not found") {
+        match self.sym.get_all_sym(&v.ident).expect("Symbol not found") {
             Sym::Const(number) => {
                 Some(self.func.dfg_mut().new_value().integer(*number))
             },
             Sym::Var(alloc) => {
                 Some(self.make_load(*alloc))
+            },
+            Sym::Func(_) => {
+                panic!("Call a function without '()'!")
             }
         }
     }
@@ -85,6 +89,12 @@ impl<'a> FuncCtx<'a> {
 
     pub fn switch_to_bb(&mut self, new_bb: ir::BasicBlock) {
         self.bb = new_bb;
+    }
+
+    pub fn make_call(&mut self, callee: ir::Function, args: Vec<ir::Value>) -> Value {
+        let v = self.func.dfg_mut().new_value().call(callee, args);
+        self.push_inst(v);
+        v
     }
 
     pub fn emit_binary(&mut self, op: ir::BinaryOp, lhs: ir::Value, rhs: ir::Value) -> ir::Value {

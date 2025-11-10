@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque};
 
 use crate::symbol::SymbolTable;
 
@@ -16,27 +16,32 @@ pub trait GenerateIR {
 
 impl GenerateIR for CompUnit {
     fn write_ir(&self, output: String) {
-        let program = program_parse_from_ast(self);
+        let program = self.generate_ir();
         let mut gen = KoopaGenerator::new(Vec::new());
         gen.generate_on(&program).expect("koopa serialize failed");
         std::fs::write(output, gen.writer()).expect("write ir file failed");
     }
 
     fn generate_ir(&self) -> ir::Program {
-        program_parse_from_ast(self)
+        let mut program = ir::Program::new();
+        let mut global_sym = SymbolTable::new();
+        process_comp_unit(self, &mut program, &mut global_sym);
+        
+        program
     }
 }
 
-pub fn program_parse_from_ast(comp: &CompUnit) -> ir::Program {
-    let mut program = ir::Program::new();
-    let mut glo_builder: ir::builder::GlobalBuilder<'_> = program.new_value();
+pub fn process_comp_unit(
+    comp: &CompUnit, 
+    program: &mut ir::Program, 
+    global_sym: &mut SymbolTable
+) {
+    if let Some(prev) = comp.comp_unit.as_ref() {
+        process_comp_unit(prev, program, global_sym);
+    }
 
-    let mut sym = SymbolTable::new();
-
-    parse_global_values(&mut glo_builder, &mut sym);
-    parse_function_from_ast(comp, &mut program, &mut sym);
-
-    program
+    // parse_global_values(&mut glo_builder, &mut sym);
+    process_func_def(&comp.func_def, program, global_sym);
 }
 
 fn parse_global_values(glo_builder: &mut ir::builder::GlobalBuilder<'_>, sym: &mut SymbolTable) {
@@ -46,15 +51,24 @@ fn parse_global_values(glo_builder: &mut ir::builder::GlobalBuilder<'_>, sym: &m
     }
 }
 
-fn parse_function_from_ast(comp: &CompUnit, program: &mut ir::Program, sym: &mut SymbolTable) {
-    let func_type = functype_parse_from_ast(&comp.func_def.func_type);
-    let func_name = format!("@{}", comp.func_def.ident);
+fn process_func_def(func_def: &FuncDef, program: &mut ir::Program, global_sym: &mut SymbolTable) {
+    let params_type: Vec<ir::Type> = func_def.params.as_ref()
+        .map(|f_params| f_params.params.iter()
+            .map(|p| params_type_parse(&p.b_type))
+            .collect())
+        .unwrap_or_default();
 
-    let func_data = ir::FunctionData::new(func_name.clone(), Vec::new(), func_type);
+    let func_type = functype_parse_from_ast(&func_def.func_type);
+    let func_name = format!("@{}", func_def.ident);
+
+    let func_data = ir::FunctionData::new(func_name.clone(), params_type, func_type);
     let func_handle = program.new_func(func_data);
 
-    // 解析函数体
-    parse_function_body(&comp.func_def, program, func_handle, sym);
+    global_sym.insert_func(&func_name, &func_handle);
+
+    // 创建函数作用域，处理参数，解析函数体
+    let mut sym = SymbolTable::with_parent(global_sym);
+    parse_function_body(func_def, program, func_handle, &mut sym);
 }
 
 // 为了避免借用检查写出了比较丑的代码，使用 GPT 重构下
@@ -79,8 +93,27 @@ fn parse_function_body(
 
     // 3) 用上下文封装对 func 的操作，避免重叠借用
     let mut ctx = FuncCtx { func, bb, sym, bb_counter: 0 , loop_stack: VecDeque::new()};
+    
+    if let Some(f_params) = &func_def.params {
+        let param_values: Vec<_> = ctx.func.params().to_vec();
+
+        for (param, &param_value) in f_params.params.iter().zip(&param_values) {
+            let alloc = ctx.make_alloc();
+            ctx.make_store(alloc, param_value);
+            ctx.sym.insert_var(&param.ident, alloc);
+        }
+    }
 
     process_block(&func_def.block, &mut ctx);
+
+    if !ctx.is_bb_terminated() {
+        match &func_def.func_type {
+            FuncType::Void => {
+                ctx.emit_ret(None);
+            },
+            _ => panic!("Miss a Return Statement!"),
+        }
+    }
 }
 
 fn process_block(block: &Block, ctx: &mut FuncCtx) {
@@ -159,18 +192,11 @@ fn process_stmt(stmt: &Stmt, ctx: &mut FuncCtx) {
         },
         Stmt::Break => {
             let while_end = ctx.current_loop_end();
-            // let break_body = ctx.new_bb("%while_body");    
-            // ctx.make_jump(break_body);
-            // ctx.switch_to_bb(break_body);
             ctx.make_jump(while_end);
-            // ctx.switch_to_bb(while_end);
         },
         Stmt::Continue => {
             let while_entry = ctx.current_loop_entry();
-            // let continue_body = ctx.new_bb("%while_body");
-            // ctx.switch_to_bb(continue_body);
             ctx.make_jump(while_entry);
-            // ctx.switch_to_bb(while_entry);
         }
     }
 }
@@ -402,11 +428,24 @@ fn emit_ast_unary(unary: &UnaryExp, ctx: &mut FuncCtx) -> ir::Value {
             let zero = ctx.make_int(0);
             let v = emit_ast_unary(u, ctx);
             ctx.emit_binary(ir::BinaryOp::Sub, zero, v)
-        }
+        },
         UnaryExp::Not(u) => {
             let zero = ctx.make_int(0);
             let v = emit_ast_unary(u, ctx);
             ctx.emit_binary(ir::BinaryOp::Eq, v, zero)
+        },
+        UnaryExp::FuncCall(ident, r_params) => {
+            let func_name = format!("@{}", ident);
+            let func = ctx.sym.get_func(&func_name)
+                .expect("Function {} not Found")
+                .clone();
+            let params_values: Vec<_> = r_params.as_ref()
+                .into_iter()
+                .flat_map(|p| &p.params)
+                .map(|exp| emit_ast_exp(exp, ctx))
+                .collect();
+
+            ctx.make_call(func, params_values)
         }
     }
 }
@@ -425,8 +464,15 @@ pub fn values_parse_from_ast() -> Vec<ir::entities::ValueData> {
 }
 
 pub fn functype_parse_from_ast(functype: &FuncType) -> ir::Type {
-    match functype._type.as_str() {
+    match functype {
+        FuncType::Int => ir::Type::get_i32(),
+        FuncType::Void => ir::Type::get_unit(),
+    }
+}
+
+pub fn params_type_parse(param: &BType) -> ir::Type {
+    match param._type.as_str() {
         "int" => ir::Type::get_i32(),
-        _ => panic!("Unknown function types.")
+        _  => panic!("Unknown function types.")
     }
 }

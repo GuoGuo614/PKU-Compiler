@@ -1,14 +1,16 @@
 use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 use koopa::ir as ir;
-use ir::Value;
+use ir::{Value, Function};
 
 pub enum Sym {
     Const(i32),
     Var(Value),
+    Func(Function),
 }
 
 pub struct SymbolTable {
-    scopes: VecDeque<HashMap<String, Sym>>,
+    scopes: VecDeque<Rc<HashMap<String, Sym>>>,
 }
 
 impl SymbolTable {
@@ -20,11 +22,22 @@ impl SymbolTable {
         table
     }
 
+    pub fn with_parent(parent: &SymbolTable) -> Self {
+        let mut table = SymbolTable {
+            scopes: VecDeque::new(),
+        };
+        if let Some(global_scope) = parent.scopes.front() {
+            table.scopes.push_back(Rc::clone(global_scope));
+        }
+        table.enter_scope();
+        table
+    }
+
     pub fn insert_const(&mut self, name: String, value: i32) {
         if self.symbol_exist_current(&name) {
             panic!("Symbol '{}' already exists in current scope!", name);
         }
-        self.scopes.back_mut()
+        Rc::get_mut(self.scopes.back_mut().unwrap())
             .expect("No active scope")
             .insert(name, Sym::Const(value));
     }
@@ -33,9 +46,18 @@ impl SymbolTable {
         if self.symbol_exist_current(name) {
             panic!("Symbol '{}' already exists in current scope!", name);
         }
-        self.scopes.back_mut()
+        Rc::get_mut(self.scopes.back_mut().unwrap())
             .expect("No active scope")
             .insert(name.to_string(), Sym::Var(alloc));
+    }
+
+    pub fn insert_func(&mut self, name: &str, func: &Function) {
+        if self.symbol_exist_current(name) {
+            panic!("Symbol '{}' already exists in current scope!", name);
+        }
+        Rc::get_mut(self.scopes.back_mut().unwrap())
+            .expect("No active scope")
+            .insert(name.to_string(), Sym::Func(*func));
     }
 
     // 检查当前作用域是否存在
@@ -50,27 +72,34 @@ impl SymbolTable {
         self.scopes.iter().rev().any(|s| s.contains_key(name))
     }
 
-    pub fn get_const_var(&self, name: &str) -> Option<&Sym> {
+    pub fn get_all_sym(&self, name: &str) -> Option<&Sym> {
         self.scopes.iter().rev()
             .find_map(|s| s.get(name))
     }
 
     pub fn get_var(&self, name: &str) -> Option<&Value> {
-        match self.get_const_var(name)? {
+        match self.get_all_sym(name)? {
             Sym::Var(alloc) => Some(alloc),
             _ => None,
         }
     }
 
     pub fn get_const(&self, name: &str) -> Option<&i32> {
-        match self.get_const_var(name)? {
+        match self.get_all_sym(name)? {
             Sym::Const(num) => Some(num),
             _ => None,
         }
     }
 
+    pub fn get_func(&self, name: &str) -> Option<&Function> {
+        match self.get_all_sym(name)? {
+            Sym::Func(func) => Some(func),
+            _ => None,
+        }
+    }
+
     pub fn enter_scope(&mut self) {
-        self.scopes.push_back(HashMap::new());
+        self.scopes.push_back(Rc::new(HashMap::new()));
     }
 
     pub fn exit_scope(&mut self) {
