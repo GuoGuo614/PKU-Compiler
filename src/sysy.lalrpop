@@ -103,6 +103,9 @@ MatchedStmt: Stmt = {
   "if" "(" <exp: Exp> ")" <body: MatchedStmt> "else" <else_body: MatchedStmt> => {
     Stmt::If(exp, Box::new(body), Some(Box::new(else_body)))
   },
+  "while" "(" <exp: Exp> ")" <stmt: MatchedStmt> => Stmt::While(exp, Box::new(stmt)),
+  "break" ";" => Stmt::Break,
+  "continue" ";" => Stmt::Continue,
   "return" <exp: Exp?> ";" => Stmt::Return(exp),
 };
 
@@ -113,6 +116,7 @@ UnmatchedStmt: Stmt = {
   "if" "(" <exp: Exp> ")" <body: MatchedStmt> "else" <else_body: UnmatchedStmt> => {
     Stmt::If(exp, Box::new(body), Some(Box::new(else_body)))
   },
+  "while" "(" <exp: Exp> ")" <stmt: UnmatchedStmt> => Stmt::While(exp, Box::new(stmt)),
 }
 
 Exp: Exp = <lor_exp: LOrExp> => Exp {

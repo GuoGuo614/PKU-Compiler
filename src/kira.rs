@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::symbol::SymbolTable;
 
 use koopa::{ir::builder::{BasicBlockBuilder, ValueInserter}, *};
@@ -76,7 +78,7 @@ fn parse_function_body(
     };
 
     // 3) 用上下文封装对 func 的操作，避免重叠借用
-    let mut ctx = FuncCtx { func, bb, sym, bb_counter: 0 };
+    let mut ctx = FuncCtx { func, bb, sym, bb_counter: 0 , loop_stack: VecDeque::new()};
 
     process_block(&func_def.block, &mut ctx);
 }
@@ -122,6 +124,10 @@ fn process_block_item(item: &BlockItem, ctx: &mut FuncCtx) {
 }
 
 fn process_stmt(stmt: &Stmt, ctx: &mut FuncCtx) {
+    // 当前块已经结束，无需处理语句
+    if ctx.is_bb_terminated() {
+        return;
+    }
     match stmt {
         Stmt::Return(exp) => {
             let v = exp.as_ref()
@@ -136,8 +142,7 @@ fn process_stmt(stmt: &Stmt, ctx: &mut FuncCtx) {
             ctx.make_store(*alloc, rhs);
         },
         Stmt::Exp(Some(_exp)) => {
-            // Do nothing. Is it OK?
-            // Later I will use it.
+            // Do nothing currently. Later I will use it.
             emit_ast_exp(_exp, ctx);
         },
         Stmt::Exp(None) => {
@@ -149,6 +154,24 @@ fn process_stmt(stmt: &Stmt, ctx: &mut FuncCtx) {
         Stmt::If(cond, body, else_body) => {
             process_if(cond, body, else_body.as_deref(), ctx);
         },
+        Stmt::While(cond, body) => {
+            process_while(cond, body, ctx);
+        },
+        Stmt::Break => {
+            let while_end = ctx.current_loop_end();
+            // let break_body = ctx.new_bb("%while_body");    
+            // ctx.make_jump(break_body);
+            // ctx.switch_to_bb(break_body);
+            ctx.make_jump(while_end);
+            // ctx.switch_to_bb(while_end);
+        },
+        Stmt::Continue => {
+            let while_entry = ctx.current_loop_entry();
+            // let continue_body = ctx.new_bb("%while_body");
+            // ctx.switch_to_bb(continue_body);
+            ctx.make_jump(while_entry);
+            // ctx.switch_to_bb(while_entry);
+        }
     }
 }
 
@@ -170,15 +193,46 @@ fn process_if(
 
     ctx.switch_to_bb(bb_then);
     process_stmt(then_stmt, ctx);
-    ctx.make_jump(bb_end);
+    if !ctx.is_bb_terminated() {
+        ctx.make_jump(bb_end);
+    }
 
     if let Some((bb, stmt)) = bb_else.zip(else_stmt) {
         ctx.switch_to_bb(bb);
         process_stmt(stmt, ctx);
-        ctx.make_jump(bb_end);
+        if !ctx.is_bb_terminated() {
+            ctx.make_jump(bb_end);
+        }
     }
 
     ctx.switch_to_bb(bb_end);
+}
+
+fn process_while(cond: &Exp, body_stmt: &Stmt, ctx: &mut FuncCtx) {
+    let bb_entry = ctx.new_bb("%while_entry");
+    let bb_body = ctx.new_bb("%while_body");
+    let bb_jump_body = ctx.new_bb("%while_body");
+    let bb_end = ctx.new_bb("%end");
+    
+    ctx.enter_loop(bb_entry, bb_end);
+    ctx.make_jump(bb_entry);
+
+    ctx.switch_to_bb(bb_entry);
+    let cond_val = emit_ast_exp(cond, ctx);
+    ctx.make_branch(cond_val, bb_body, bb_end);
+
+    ctx.switch_to_bb(bb_jump_body);
+    ctx.make_jump(bb_entry);
+
+    ctx.switch_to_bb(bb_body);
+    process_stmt(body_stmt, ctx);
+
+    if !ctx.is_bb_terminated() {
+        ctx.make_jump(bb_jump_body);
+    }
+
+    ctx.switch_to_bb(bb_end);
+    ctx.exit_loop();
 }
 
 // 表达式生成（基于上下文）
@@ -186,8 +240,8 @@ fn emit_ast_exp(exp: &Exp, ctx: &mut FuncCtx) -> ir::Value {
     emit_ast_lor(&exp.lor_exp, ctx)
 }
 
-// 将整数转为布尔代数
-fn to_bool(ctx: &mut FuncCtx, v: ir::Value) -> ir::Value {
+// 将整数转为布尔代数，好像没用啊
+fn _to_bool(ctx: &mut FuncCtx, v: ir::Value) -> ir::Value {
     if ctx.is_bool(v) {
         return v;
     }
@@ -200,12 +254,27 @@ fn emit_ast_lor(lor: &LOrExp, ctx: &mut FuncCtx) -> ir::Value {
     match lor {
         LOrExp::And(land) => emit_ast_land(land, ctx),
         LOrExp::Or(l, r) => {
-            let l_raw = emit_ast_lor(l, ctx);
-            let lv = to_bool(ctx, l_raw);
-            let r_raw = emit_ast_land(r, ctx);
-            let rv = to_bool(ctx, r_raw);
+            let result_alloc = ctx.make_alloc();
+            let bb_true = ctx.new_bb("%or_true");
+            let bb_false = ctx.new_bb("%or_false");
+            let bb_end = ctx.new_bb("%or_end");
+            
+            let lv = emit_ast_lor(l, ctx);
+            ctx.make_branch(lv, bb_true, bb_false);
 
-            ctx.emit_binary(ir::BinaryOp::Or, lv, rv)
+            ctx.switch_to_bb(bb_true);
+            let one = ctx.make_int(1);
+            ctx.make_store(result_alloc, one);
+            ctx.make_jump(bb_end);
+            
+            ctx.switch_to_bb(bb_false);
+            let rv = emit_ast_land(r, ctx);
+            // let rv_bool = to_bool(ctx, rv);
+            ctx.make_store(result_alloc, rv);
+            ctx.make_jump(bb_end);
+
+            ctx.switch_to_bb(bb_end);
+            ctx.make_load(result_alloc)
         }
     }
 }
@@ -216,11 +285,28 @@ fn emit_ast_land(land: &LAndExp, ctx: &mut FuncCtx) -> ir::Value {
             emit_ast_eq(eq, ctx)
         }
         LAndExp::And(l, r) => {
-            let l_raw = emit_ast_land(l, ctx);
-            let lv = to_bool(ctx, l_raw);
-            let r_raw = emit_ast_eq(r, ctx);
-            let rv = to_bool(ctx, r_raw);
-            ctx.emit_binary(ir::BinaryOp::And, lv, rv)
+            let result_alloc = ctx.make_alloc();
+            
+            let bb_true = ctx.new_bb("%and_true");
+            let bb_false = ctx.new_bb("%and_false");
+            let bb_end = ctx.new_bb("%and_end");
+            
+            let lv = emit_ast_land(l, ctx);
+            ctx.make_branch(lv, bb_true, bb_false);
+            
+            ctx.switch_to_bb(bb_true);
+            let rv = emit_ast_eq(r, ctx);
+            // let rv_bool = to_bool(ctx, rv);
+            ctx.make_store(result_alloc, rv);
+            ctx.make_jump(bb_end);
+            
+            ctx.switch_to_bb(bb_false);
+            let zero = ctx.make_int(0);
+            ctx.make_store(result_alloc, zero);
+            ctx.make_jump(bb_end);
+            
+            ctx.switch_to_bb(bb_end);
+            ctx.make_load(result_alloc)
         }
     }
 }

@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::symbol::SymbolTable;
 use crate::ast::LVal;
 use koopa::ir::{self as ir, Type};
@@ -10,6 +12,12 @@ pub struct FuncCtx<'a> {
     pub bb: ir::BasicBlock,
     pub sym: &'a mut SymbolTable,
     pub bb_counter: usize,
+    pub loop_stack: VecDeque<LoopContext>,
+}
+
+pub struct LoopContext {
+    pub entry_bb: ir::BasicBlock,
+    pub end_bb: ir::BasicBlock,
 }
 
 impl<'a> FuncCtx<'a> {
@@ -99,6 +107,30 @@ impl<'a> FuncCtx<'a> {
             .expect("Failed to push instruction");
     }
 
+    pub fn enter_loop(&mut self, entry: ir::BasicBlock, end: ir::BasicBlock) {
+        self.loop_stack.push_back(LoopContext {
+            entry_bb: entry,
+            end_bb: end,
+        });
+    }
+
+    pub fn exit_loop(&mut self) {
+        self.loop_stack.pop_back()
+            .expect("exit_loop called outside loop");
+    }
+
+    pub fn current_loop_entry(&self) -> ir::BasicBlock {
+        self.loop_stack.back()
+            .expect("break/continue outside loop")
+            .entry_bb
+    }
+
+    pub fn current_loop_end(&self) -> ir::BasicBlock {
+        self.loop_stack.back()
+            .expect("break/continue outside loop")
+            .end_bb
+    }
+
     // 判断一个值是否已经是布尔（0/1）
     pub fn is_bool(&mut self, v: ir::Value) -> bool {
         use koopa::ir::ValueKind;
@@ -111,5 +143,23 @@ impl<'a> FuncCtx<'a> {
             }
             _ => false,
         }
+    }
+
+    // 检查当前块是否已结束，Provided by Claude.
+    pub fn is_bb_terminated(&self) -> bool {
+        self.func.layout()
+            .bbs()
+            .node(&self.bb)
+            .and_then(|node| {
+                node.insts().back_key().map(|&inst| {
+                    let kind = self.func.dfg().value(inst).kind();
+                    matches!(kind,
+                        ir::ValueKind::Return(_) |
+                        ir::ValueKind::Jump(_) |
+                        ir::ValueKind::Branch(_)
+                    )
+                })
+            })
+            .unwrap_or(false)
     }
 }
