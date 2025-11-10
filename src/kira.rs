@@ -24,11 +24,88 @@ impl GenerateIR for CompUnit {
 
     fn generate_ir(&self) -> ir::Program {
         let mut program = ir::Program::new();
+
+        // 为 Program 插入库函数声明
         let mut global_sym = SymbolTable::new();
-        process_comp_unit(self, &mut program, &mut global_sym);
+        insert_library_functions(&mut program, &mut global_sym);
         
+        process_comp_unit(self, &mut program, &mut global_sym);
         program
     }
+}
+
+fn insert_library_functions(program: &mut ir::Program, global_sym: &mut SymbolTable) {
+    // decl @getint(): i32
+    let getint = ir::FunctionData::new_decl(
+        "@getint".to_string(),
+        Vec::new(),
+        ir::Type::get_i32()
+    );
+    let getint_handle = program.new_func(getint);
+    global_sym.insert_func("@getint", &getint_handle);
+    
+    // decl @getch(): i32
+    let getch = ir::FunctionData::new_decl(
+        "@getch".to_string(),
+        Vec::new(),
+        ir::Type::get_i32()
+    );
+    let getch_handle = program.new_func(getch);
+    global_sym.insert_func("@getch", &getch_handle);
+    
+    // decl @getarray(*i32): i32
+    let getarray = ir::FunctionData::new_decl(
+        "@getarray".to_string(),
+        vec![ir::Type::get_pointer(ir::Type::get_i32())],
+        ir::Type::get_i32()
+    );
+    let getarray_handle = program.new_func(getarray);
+    global_sym.insert_func("@getarray", &getarray_handle);
+    
+    // decl @putint(i32)
+    let putint = ir::FunctionData::new_decl(
+        "@putint".to_string(),
+        vec![ir::Type::get_i32()],
+        ir::Type::get_unit()
+    );
+    let putint_handle = program.new_func(putint);
+    global_sym.insert_func("@putint", &putint_handle);
+    
+    // decl @putch(i32)
+    let putch = ir::FunctionData::new_decl(
+        "@putch".to_string(),
+        vec![ir::Type::get_i32()],
+        ir::Type::get_unit()
+    );
+    let putch_handle = program.new_func(putch);
+    global_sym.insert_func("@putch", &putch_handle);
+    
+    // decl @putarray(i32, *i32)
+    let putarray = ir::FunctionData::new_decl(
+        "@putarray".to_string(),
+        vec![ir::Type::get_i32(), ir::Type::get_pointer(ir::Type::get_i32())],
+        ir::Type::get_unit()
+    );
+    let putarray_handle = program.new_func(putarray);
+    global_sym.insert_func("@putarray", &putarray_handle);
+    
+    // decl @starttime()
+    let starttime = ir::FunctionData::new_decl(
+        "@starttime".to_string(),
+        Vec::new(),
+        ir::Type::get_unit()
+    );
+    let starttime_handle = program.new_func(starttime);
+    global_sym.insert_func("@starttime", &starttime_handle);
+    
+    // decl @stoptime()
+    let stoptime = ir::FunctionData::new_decl(
+        "@stoptime".to_string(),
+        Vec::new(),
+        ir::Type::get_unit()
+    );
+    let stoptime_handle = program.new_func(stoptime);
+    global_sym.insert_func("@stoptime", &stoptime_handle);
 }
 
 pub fn process_comp_unit(

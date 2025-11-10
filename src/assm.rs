@@ -15,8 +15,14 @@ impl GenerateAsm for ir::Program {
         
         let func_names: Vec<_> = self.func_layout()
             .iter()
-            .map(|&func| self.func(func).name().strip_prefix('@').unwrap())
-            .collect();
+            .filter_map(|&func| {
+                let func_data = self.func(func);
+                if !func_is_decl(func_data) {
+                    Some(func_data.name().strip_prefix('@').unwrap())
+                } else {
+                    None
+                }
+            }).collect();
         
         writeln!(w, "\t.globl {}", func_names.join(", ")).unwrap();
 
@@ -42,6 +48,10 @@ struct AsmCtx<'a, W: Write> {
 
 fn align_to_16(n: usize) -> usize {
     (n + 15) & !15
+}
+
+pub fn func_is_decl(func_data: &ir::FunctionData) -> bool {
+    func_data.layout().bbs().is_empty()
 }
 
 impl<'a, W: Write> AsmCtx<'a, W> {
