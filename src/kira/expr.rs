@@ -19,6 +19,7 @@ fn _to_bool(ctx: &mut FuncCtx, v: ir::Value) -> ir::Value {
     ctx.emit_binary(ir::BinaryOp::Eq, is_zero, zero) // 1 if v != 0
 }
 
+// lor 和 land 实现了短路求值
 fn emit_ast_lor(lor: &LOrExp, ctx: &mut FuncCtx) -> ir::Value {
     match lor {
         LOrExp::And(land) => emit_ast_land(land, ctx),

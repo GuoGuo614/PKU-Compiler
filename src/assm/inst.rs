@@ -188,11 +188,7 @@ impl<'a, W: Write> AsmCtx<'a, W> {
     fn specific_reg_for(&mut self, v: ir::Value, reg: &str) {
         match self.func.dfg().value(v).kind() {
             ValueKind::Integer(int) => {
-                if int.value() == 0 {
-                    "x0";
-                } else {
-                    writeln!(self.w, "\tli {}, {}", reg, int.value()).unwrap();
-                }
+                writeln!(self.w, "\tli {}, {}", reg, int.value()).unwrap();
             },
             ValueKind::Load(_) | ValueKind::Binary(_) | ValueKind::Call(_) => {
                 let offset = self.sf.get_slot(&v);
