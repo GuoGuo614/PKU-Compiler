@@ -14,6 +14,7 @@ pub struct SymbolTable {
 }
 
 impl SymbolTable {
+    // 用于生成全局作用域
     pub fn new() -> Self {
         let mut table = SymbolTable {
             scopes: VecDeque::new(),
@@ -22,6 +23,7 @@ impl SymbolTable {
         table
     }
 
+    // 用于生成函数作用域
     pub fn with_parent(parent: &SymbolTable) -> Self {
         let mut table = SymbolTable {
             scopes: VecDeque::new(),

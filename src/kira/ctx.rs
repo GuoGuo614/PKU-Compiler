@@ -1,11 +1,11 @@
 use core::panic;
 use std::collections::VecDeque;
 
-use crate::symbol::SymbolTable;
+use super::symbol::SymbolTable;
 use crate::ast::LVal;
 use koopa::ir::{self as ir, Type, Value};
 use koopa::ir::builder::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder};
-use crate::symbol::Sym;
+use super::symbol::Sym;
 
 // 轻量 IR 上下文，内部方法只做短借用
 pub struct FuncCtx<'a> {
@@ -143,8 +143,8 @@ impl<'a> FuncCtx<'a> {
             .end_bb
     }
 
-    // 判断一个值是否已经是布尔（0/1）
-    pub fn is_bool(&mut self, v: ir::Value) -> bool {
+    // 判断一个值是否已经是 bool，好像没用啊
+    pub fn _is_bool(&mut self, v: ir::Value) -> bool {
         use koopa::ir::ValueKind;
         let kind = self.func.dfg().value(v).kind();
         match kind {

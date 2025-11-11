@@ -1,7 +1,7 @@
 use core::panic;
 
 use crate::ast::*;
-use crate::symbol::SymbolTable;
+use super::symbol::SymbolTable;
 
 pub trait EvalConst {
     fn eval(&self, sym: &SymbolTable) -> i32;
