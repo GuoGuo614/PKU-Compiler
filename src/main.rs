@@ -10,7 +10,6 @@ pub mod kira;
 pub mod ctx;
 pub mod const_eval;
 pub mod symbol;
-pub mod alloc;
 
 use assm::GenerateAsm;
 use kira::GenerateIR;
