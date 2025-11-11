@@ -2,7 +2,7 @@ use std::{collections::VecDeque};
 
 use crate::symbol::SymbolTable;
 
-use koopa::{ir::builder::{BasicBlockBuilder, ValueInserter}, *};
+use koopa::{ir::builder::{BasicBlockBuilder, GlobalInstBuilder, ValueBuilder}, *};
 use koopa::back::KoopaGenerator;
 use crate::ast::*;
 
@@ -88,7 +88,7 @@ fn insert_library_functions(program: &mut ir::Program, global_sym: &mut SymbolTa
     );
     let putarray_handle = program.new_func(putarray);
     global_sym.insert_func("@putarray", &putarray_handle);
-    
+
     // decl @starttime()
     let starttime = ir::FunctionData::new_decl(
         "@starttime".to_string(),
@@ -117,14 +117,55 @@ pub fn process_comp_unit(
         process_comp_unit(prev, program, global_sym);
     }
 
-    // parse_global_values(&mut glo_builder, &mut sym);
-    process_func_def(&comp.func_def, program, global_sym);
+    match &comp.body {
+        CompBody::FuncDef(func_def) => {
+            process_func_def(func_def, program, global_sym);
+        },
+        CompBody::Decl(decl) => {
+            process_global_decl(decl, program, global_sym);
+        }
+    }
 }
 
-fn parse_global_values(glo_builder: &mut ir::builder::GlobalBuilder<'_>, sym: &mut SymbolTable) {
-    let global_values = values_parse_from_ast();
-    for global_value in global_values {
-        glo_builder.insert_value(global_value);
+pub fn make_global_alloc(program: &mut ir::Program, init: Option<ir::Value>) -> ir::Value {
+    if let Some(val) = init {
+        program.new_value().global_alloc(val)
+    } else {
+        let zero_init = program.new_value().zero_init(ir::Type::get_i32());
+        program.new_value().global_alloc(zero_init)
+    }
+}
+
+fn process_global_decl(decl: &Decl, program: &mut ir::Program, global_sym: &mut SymbolTable) {
+    match decl {
+        Decl::Var(decl) => {
+            for c in &decl.var_defs {
+                match c {
+                    VarDef::Decl(name) => {
+                        let global_var = make_global_alloc(program, None);
+                        let var_name = format!("@{}", name);
+                        // 设置变量名，便于调试
+                        program.set_value_name(global_var, Some(var_name));
+                        global_sym.insert_var(&name, global_var);
+                    },
+                    VarDef::Init(name, val) => {
+                        let const_val = val.exp.eval(&global_sym);
+                        let init = program.new_value().integer(const_val);
+                        let global_var = make_global_alloc(program, Some(init));
+                        let var_name = format!("@{}", name);
+                        // 设置变量名，便于调试
+                        program.set_value_name(global_var, Some(var_name));
+                        global_sym.insert_var(&name, global_var);
+                    }
+                }
+            }
+        },
+        Decl::Const(decl) => {
+            for c in &decl.const_defs {
+                let v = c.const_val.const_exp.exp.eval(&global_sym);
+                global_sym.insert_const(c.ident.clone(), v);
+            }
+        }
     }
 }
 
@@ -175,7 +216,7 @@ fn parse_function_body(
         let param_values: Vec<_> = ctx.func.params().to_vec();
 
         for (param, &param_value) in f_params.params.iter().zip(&param_values) {
-            let alloc = ctx.make_alloc();
+            let alloc = ctx.make_alloc(None);
             ctx.make_store(alloc, param_value);
             ctx.sym.insert_var(&param.ident, alloc);
         }
@@ -218,11 +259,11 @@ fn process_block_item(item: &BlockItem, ctx: &mut FuncCtx) {
             for c in &decl.var_defs {
                 match c {
                     VarDef::Decl(name) => {
-                        let alloc = ctx.make_alloc();
+                        let alloc = ctx.make_alloc(Some(format!("%{}", name)));
                         ctx.sym.insert_var(name, alloc);
                     },
                     VarDef::Init(name, val) => {
-                        let alloc = ctx.make_alloc();
+                        let alloc = ctx.make_alloc(Some(format!("%{}", name)));
                         ctx.sym.insert_var(name, alloc);
                         let rhs = emit_ast_exp(&val.exp, ctx);
                         ctx.make_store(alloc, rhs);
@@ -357,7 +398,7 @@ fn emit_ast_lor(lor: &LOrExp, ctx: &mut FuncCtx) -> ir::Value {
     match lor {
         LOrExp::And(land) => emit_ast_land(land, ctx),
         LOrExp::Or(l, r) => {
-            let result_alloc = ctx.make_alloc();
+            let result_alloc = ctx.make_alloc(Some("%result".to_string()));
             let bb_true = ctx.new_bb("%or_true");
             let bb_false = ctx.new_bb("%or_false");
             let bb_end = ctx.new_bb("%or_end");
@@ -388,7 +429,7 @@ fn emit_ast_land(land: &LAndExp, ctx: &mut FuncCtx) -> ir::Value {
             emit_ast_eq(eq, ctx)
         }
         LAndExp::And(l, r) => {
-            let result_alloc = ctx.make_alloc();
+            let result_alloc = ctx.make_alloc(Some("%result".to_string()));
             
             let bb_true = ctx.new_bb("%and_true");
             let bb_false = ctx.new_bb("%and_false");
@@ -533,11 +574,6 @@ fn emit_ast_primary(p: &PrimaryExp, ctx: &mut FuncCtx) -> ir::Value {
         PrimaryExp::Paren(e) => emit_ast_exp(e, ctx),
         PrimaryExp::LVal(lval) => ctx.make_val(lval).unwrap()
     }
-}
-
-pub fn values_parse_from_ast() -> Vec<ir::entities::ValueData> {
-    let result = Vec::new();
-    result
 }
 
 pub fn functype_parse_from_ast(functype: &FuncType) -> ir::Type {

@@ -11,8 +11,42 @@ pub trait GenerateAsm {
 
 impl GenerateAsm for ir::Program {
     fn write_assm_to<W: Write>(&self, w: &mut W) {
-        writeln!(w, "\t.text").unwrap();
+        // 解析全局变量
+        let var_datas: Vec<_> = self.borrow_values()
+            .keys()
+            .filter_map(|&val| {
+                let val_data = self.borrow_value(val);
+                if matches!(val_data.kind(), ValueKind::GlobalAlloc(_)) {
+                    Some(val_data)
+                } else {
+                    None
+                }
+            }).collect();
+
+        writeln!(w, "\t.data").unwrap();
+        for var_data in &var_datas {
+            let name = var_data.name().as_ref().unwrap().strip_prefix('@').unwrap();
+            writeln!(w, "\t.globl {}", name).unwrap();
+            writeln!(w, "{}:", name).unwrap();
+
+            if let ValueKind::GlobalAlloc(alloc) = var_data.kind() {
+                let init = alloc.init();
+                let init_data = self.borrow_value(init);
+                
+                match init_data.kind() {
+                    ValueKind::Integer(int) => {
+                        writeln!(w, "\t.word {}", int.value()).unwrap();
+                    },
+                    ValueKind::ZeroInit(_) => {
+                        writeln!(w, "\t.zero 4").unwrap();
+                    },
+                    _ => panic!("Unsupported global init type"),
+                }
+            }
+            writeln!(w).unwrap();
+        }
         
+        // 解析代码段
         let func_names: Vec<_> = self.func_layout()
             .iter()
             .filter_map(|&func| {
@@ -22,14 +56,16 @@ impl GenerateAsm for ir::Program {
                 } else {
                     None
                 }
-            }).collect();
-        
+            })
+            .collect();
+        writeln!(w, "\t.text").unwrap();
         writeln!(w, "\t.globl {}", func_names.join(", ")).unwrap();
-
 
         for &func in self.func_layout() {
             let func_data = self.func(func);
-            writeln!(w, "{}:", func_data.name().strip_prefix('@').unwrap()).unwrap();
+            if !func_is_decl(func_data) {
+                writeln!(w, "{}:", func_data.name().strip_prefix('@').unwrap()).unwrap();
+            }
             let mut ctx = AsmCtx::new(self, func_data, w);
             ctx.emit_function();
         }
@@ -122,6 +158,20 @@ impl<'a, W: Write> AsmCtx<'a, W> {
         }
     }
 
+    fn is_global(&self, value: ir::Value) -> bool {
+        self.func.dfg().values().get(&value).is_none()
+    }
+    
+    fn get_global_name(&self, value: ir::Value) -> String {
+        let data = self.program.borrow_value(value);
+        data.name()
+            .as_ref()
+            .unwrap()
+            .strip_prefix('@')
+            .unwrap()
+            .to_string()
+    }
+
     fn emit_inst(&mut self, inst: ir::Value) {
         let v = self.func.dfg().value(inst);
         match v.kind() {
@@ -164,10 +214,17 @@ impl<'a, W: Write> AsmCtx<'a, W> {
             },
             ValueKind::Load(load) => {
                 let src = load.src();
-                let src_offset = self.sf.get_slot(&src);
                 let rd = self.ra.alloc();
-                writeln!(self.w, "\tlw {}, {}(sp)", rd, src_offset).unwrap();
-
+                
+                if self.is_global(src) {
+                    let var_name = self.get_global_name(src);
+                    writeln!(self.w, "\tla {}, {}", rd, var_name).unwrap();
+                    writeln!(self.w, "\tlw {}, 0({})", rd, rd).unwrap();
+                } else {
+                    let src_offset = self.sf.get_slot(&src);
+                    writeln!(self.w, "\tlw {}, {}(sp)", rd, src_offset).unwrap();
+                }
+                
                 let dst_offset = self.sf.alloc_slot(inst);
                 writeln!(self.w, "\tsw {}, {}(sp)", rd, dst_offset).unwrap();
                 self.ra.release(rd);
@@ -175,11 +232,18 @@ impl<'a, W: Write> AsmCtx<'a, W> {
             ValueKind::Store(store) => {
                 let val = store.value();
                 let rval = self.reg_for(val);
-
                 let dst = store.dest();
-                let dst_offset = self.sf.get_slot(&dst);
+
+                if !self.is_global(dst) {
+                    let dst_offset = self.sf.get_slot(&dst);
+                    writeln!(self.w, "\tsw {}, {}(sp)", rval, dst_offset).unwrap();
+                } else {
+                    let addr_reg = self.ra.alloc();
+                    let var_name = self.get_global_name(dst);
+                    writeln!(self.w, "\tla {}, {}", addr_reg, var_name).unwrap();
+                    writeln!(self.w, "\tsw {}, 0({})", rval, addr_reg).unwrap();
+                }
                 
-                writeln!(self.w, "\tsw {}, {}(sp)", rval, dst_offset).unwrap();
                 self.ra.dec_use(val);
             },
             ValueKind::Branch(branch) => {

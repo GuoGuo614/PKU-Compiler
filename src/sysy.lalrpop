@@ -12,24 +12,46 @@ match {
 }
 
 // 定义 CompUnit, 其返回值类型为 CompUnit
-// parser 在解析完成后的行为是返回 FuncDef 的值
-pub CompUnit: CompUnit = <comp_unit: CompUnit?> <func_def: FuncDef> => CompUnit {
+// CompUnit ::= [CompUnit] (Decl | FuncDef);
+pub CompUnit: CompUnit = <comp_unit: CompUnit?> <body: CompBody> => CompUnit {
     comp_unit: Box::new(comp_unit),
-    func_def,
+    body,
 };
 
-FuncDef: FuncDef = {
-  <func_type: FuncType> <ident: Ident> "(" <params: FuncFParams?> ")" <block: Block> => FuncDef {
-    func_type,
-    ident,
-    params,
-    block,
-  }
-}
+// CompBody 可以是函数定义或声明
+CompBody: CompBody = {
+    <func_type: TypeSpec> <ident: Ident> "(" <params: FuncFParams?> ")" <block: Block> => {
+        let func_type = match func_type.as_str() {
+            "int" => FuncType::Int,
+            "void" => FuncType::Void,
+            _ => panic!("Unknown function type"),
+        };
+        CompBody::FuncDef(FuncDef {
+            func_type,
+            ident,
+            params,
+            block,
+        })
+    },
+    // 常量声明
+    "const" <btype: TypeSpec> <defs: ConstDefList> ";" => {
+        CompBody::Decl(Decl::Const(ConstDecl {
+            btype: BType { _type: btype },
+            const_defs: defs,
+        }))
+    },
+    // 变量声明
+    <btype: TypeSpec> <defs: VarDefList> ";" => {
+        CompBody::Decl(Decl::Var(VarDecl {
+            b_type: BType { _type: btype },
+            var_defs: defs,
+        }))
+    },
+};
 
-FuncType: FuncType = {
-  "int" => FuncType::Int,
-  "void" => FuncType::Void,
+TypeSpec: String = {
+    "int" => "int".to_string(),
+    "void" => "void".to_string(),
 };
 
 FuncFParams: FuncFParams = {
@@ -40,8 +62,8 @@ FuncFParams: FuncFParams = {
   }
 };
 
-FuncFParam: FuncFParam = <b_type: BType> <ident: Ident> => FuncFParam {
-  b_type,
+FuncFParam: FuncFParam = <b_type: TypeSpec> <ident: Ident> => FuncFParam {
+  b_type: BType { _type: b_type },
   ident,
 };
 
@@ -51,8 +73,8 @@ Decl: Decl = {
   <var_decl: VarDecl>     => Decl::Var(var_decl),
 };
 
-ConstDecl: ConstDecl = "const" <btype: BType> <defs: ConstDefList> ";" => ConstDecl {
-    btype,
+ConstDecl: ConstDecl = "const" <btype: TypeSpec> <defs: ConstDefList> ";" => ConstDecl {
+    btype: BType { _type: btype },
     const_defs: defs,
 };
 
@@ -64,8 +86,6 @@ ConstDefList: Vec<ConstDef> = {
   }
 };
 
-BType: BType = "int" => BType { _type: "int".to_string() };
-
 ConstDef: ConstDef = <ident: Ident> "=" <val: ConstInitVal> => ConstDef {
   ident,
   const_val: val,
@@ -76,8 +96,8 @@ ConstInitVal: ConstInitVal = <ce: ConstExp> => ConstInitVal { const_exp: ce };
 ConstExp: ConstExp = <exp: Exp> => ConstExp { exp };
 
 // VarDecl and VarDef
-VarDecl: VarDecl = <btype: BType> <defs: VarDefList> ";" => VarDecl {
-  b_type: btype,
+VarDecl: VarDecl = <btype: TypeSpec> <defs: VarDefList> ";" => VarDecl {
+  b_type: BType { _type: btype },
   var_defs: defs,
 };
 
@@ -90,8 +110,8 @@ VarDefList: Vec<VarDef> = {
 };
 
 VarDef: VarDef = {
-  <ident: Ident> => VarDef::Decl(ident),
   <ident: Ident> "=" <init: InitVal> => VarDef::Init(ident, init),
+  <ident: Ident> => VarDef::Decl(ident),
 };
 
 InitVal: InitVal = <exp: Exp> => InitVal { exp };

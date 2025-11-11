@@ -1,6 +1,11 @@
 pub struct CompUnit {
   pub comp_unit: Box<Option<CompUnit>>,
-  pub func_def: FuncDef,
+  pub body: CompBody,
+}
+
+pub enum CompBody {
+  FuncDef(FuncDef),
+  Decl(Decl),
 }
 
 pub enum Decl {

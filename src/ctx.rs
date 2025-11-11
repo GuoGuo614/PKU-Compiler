@@ -55,8 +55,10 @@ impl<'a> FuncCtx<'a> {
         }
     }
 
-    pub fn make_alloc(&mut self) -> ir::Value {
+    // 可以顺便设置一下变量名
+    pub fn make_alloc(&mut self, var_name: Option<String>) -> ir::Value {
         let v = self.func.dfg_mut().new_value().alloc(Type::get_i32());
+        self.func.dfg_mut().set_value_name(v, var_name);
         self.push_inst(v);
         v
     }
