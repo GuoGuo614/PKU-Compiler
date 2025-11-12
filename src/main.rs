@@ -30,6 +30,9 @@ fn main() -> Result<()> {
     // 调用 lalrpop 生成的 parser 解析输入文件
     let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
 
+    // 调整 koopa ir 指针大小
+    koopa::ir::Type::set_ptr_size(4);
+
     match mode.as_str() {
         "-riscv" => {
             let program = ast.generate_ir();

@@ -36,8 +36,11 @@ impl<'a, W: Write> AsmCtx<'a, W> {
     }
 
     fn emit_prologue(&mut self) {
-        if self.sf.total > 0 {
+        if self.sf.total > 0 && self.sf.total < 2048 {
             writeln!(self.w, "\taddi sp, sp, -{}", self.sf.total).unwrap();
+        } else if self.sf.total >= 2048 {
+            writeln!(self.w, "\tli t0, -{}", self.sf.total).unwrap();
+            writeln!(self.w, "\tadd sp, sp, t0").unwrap();
         }
         if self.has_call {
             writeln!(self.w, "\tsw ra, {}(sp)", self.sf.total - 4).unwrap();

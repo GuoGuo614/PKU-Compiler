@@ -37,6 +37,15 @@ fn emit_global_var<W: Write>(program: &ir::Program, w: &mut W, val: &ir::Value) 
             ValueKind::ZeroInit(_) => {
                 writeln!(w, "\t.zero 4").unwrap();
             },
+            ValueKind::Aggregate(aggregate) => {
+                let vals = aggregate.elems();
+                for val in vals {
+                    let val_data = program.borrow_value(*val);
+                    if let ValueKind::Integer(int) = val_data.kind() {
+                        writeln!(w, "\t.word {}", int.value()).unwrap();
+                    }
+                }
+            }
             _ => panic!("Unsupported global init type"),
         }
     }
