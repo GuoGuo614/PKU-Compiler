@@ -7,6 +7,12 @@ pub trait EvalConst {
     fn eval(&self, sym: &SymbolTable) -> i32;
 }
 
+impl EvalConst for ConstExp {
+    fn eval(&self, sym: &SymbolTable) -> i32 {
+        self.exp.eval(sym)
+    }
+}
+
 impl EvalConst for Exp {
     fn eval(&self, sym: &SymbolTable) -> i32 { self.lor_exp.eval(sym) }
 }

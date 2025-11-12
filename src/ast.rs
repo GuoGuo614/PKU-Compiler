@@ -24,11 +24,13 @@ pub struct BType {
 
 pub struct ConstDef {
   pub ident: String,
+  pub size: Option<ConstExp>,
   pub const_val: ConstInitVal
 }
 
-pub struct ConstInitVal {
-  pub const_exp: ConstExp,
+pub enum ConstInitVal {
+  Var(ConstExp),
+  Array(Vec<ConstExp>),
 }
 
 pub struct VarDecl {
@@ -37,12 +39,13 @@ pub struct VarDecl {
 }
 
 pub enum VarDef {
-  Decl(String),
-  Init(String, InitVal),
+  Decl(String, Option<ConstExp>),
+  Init(String, Option<ConstExp>, InitVal),
 }
 
-pub struct InitVal {
-  pub exp: Exp,
+pub enum InitVal {
+  Var(Exp),
+  Array(Vec<Exp>),
 }
 
 pub struct ConstExp {
@@ -92,6 +95,7 @@ pub enum Stmt {
 
 pub struct LVal {
   pub ident: String,
+  pub index: Box<Option<Exp>>,
 }
 
 pub struct Exp {

@@ -57,7 +57,7 @@ fn parse_function_body(
         let param_values: Vec<_> = ctx.func.params().to_vec();
 
         for (param, &param_value) in f_params.params.iter().zip(&param_values) {
-            let alloc = ctx.make_alloc(None);
+            let alloc = ctx.make_alloc(ir::Type::get_i32(), None);
             ctx.make_store(alloc, param_value);
             ctx.sym.insert_var(&param.ident, alloc);
         }

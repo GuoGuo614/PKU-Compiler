@@ -7,6 +7,7 @@ pub enum Sym {
     Const(i32),
     Var(Value),
     Func(Function),
+    Array(Value),
 }
 
 pub struct SymbolTable {
@@ -51,6 +52,15 @@ impl SymbolTable {
         Rc::get_mut(self.scopes.back_mut().unwrap())
             .expect("No active scope")
             .insert(name.to_string(), Sym::Var(alloc));
+    }
+
+    pub fn insert_array(&mut self, name: &str, alloc: Value) {
+        if self.symbol_exist_current(name) {
+            panic!("Symbol '{}' already exists in current scope!", name);
+        }
+        Rc::get_mut(self.scopes.back_mut().unwrap())
+            .expect("No active scope")
+            .insert(name.to_string(), Sym::Array(alloc));
     }
 
     pub fn insert_func(&mut self, name: &str, func: &Function) {

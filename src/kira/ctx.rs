@@ -6,6 +6,7 @@ use crate::ast::LVal;
 use koopa::ir::{self as ir, Type, Value};
 use koopa::ir::builder::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder};
 use super::symbol::Sym;
+use super::expr::emit_ast_exp;
 
 // 轻量 IR 上下文，内部方法只做短借用
 pub struct FuncCtx<'a> {
@@ -42,13 +43,27 @@ impl<'a> FuncCtx<'a> {
     }
 
     pub fn make_val(&mut self, v: &LVal) -> Option<ir::Value> {
-        match self.sym.get_all_sym(&v.ident).expect("Symbol not found") {
+        // Evaluate index expression first (if any) to avoid borrowing self.sym
+        // immutably while we later need a mutable borrow for emitting code.
+        let index_val_opt = if let Some(index) = &v.index.as_ref() {
+            Some(emit_ast_exp(index, self))
+        } else {
+            None
+        };
+
+        let sym = self.sym.get_all_sym(&v.ident).expect("Symbol not found");
+        match sym {
             Sym::Const(number) => {
                 Some(self.func.dfg_mut().new_value().integer(*number))
             },
             Sym::Var(alloc) => {
                 Some(self.make_load(*alloc))
             },
+            Sym::Array(alloc) => {
+                let index_val = index_val_opt.expect("Array access without index");
+                let target = self.make_getelemptr(*alloc, index_val);
+                Some(self.make_load(target))
+            }
             Sym::Func(_) => {
                 panic!("Call a function without '()'!")
             }
@@ -56,11 +71,41 @@ impl<'a> FuncCtx<'a> {
     }
 
     // 可以顺便设置一下变量名
-    pub fn make_alloc(&mut self, var_name: Option<String>) -> ir::Value {
-        let v = self.func.dfg_mut().new_value().alloc(Type::get_i32());
+    pub fn make_alloc(&mut self, ty: Type, var_name: Option<String>) -> ir::Value {
+        let v = self.func.dfg_mut().new_value().alloc(ty);
         self.func.dfg_mut().set_value_name(v, var_name);
         self.push_inst(v);
         v
+    }
+
+    pub fn make_array_alloc(&mut self, array_name: Option<String>, size: usize) -> ir::Value {
+        let array_type = ir::Type::get_array(ir::Type::get_i32(), size);
+        self.make_alloc(array_type, array_name)
+    }
+
+    pub fn make_array_init<T: super::const_eval::EvalConst>(
+        &mut self, 
+        array_name: Option<String>, 
+        size: usize,
+        exps: &[T],
+    ) -> ir::Value {
+        let array = self.make_array_alloc(array_name, size);
+        for (index, exp) in exps.iter().enumerate() {
+            let index = self.make_int(index as i32);
+            let index_alloc = self.make_getelemptr(array, index);
+            let value = exp.eval(self.sym);
+            let val = self.make_int(value);
+            self.make_store(index_alloc, val);
+        }
+        if exps.len() < size {
+            let zero = self.make_int(0);
+            for i in exps.len()..size {
+                let index_val = self.make_int(i as i32);
+                let index_alloc = self.make_getelemptr(array, index_val);
+                self.make_store(index_alloc, zero);
+            }
+        }
+        array
     }
 
     pub fn make_store(&mut self, alloc: ir::Value, val: ir::Value) {
@@ -70,6 +115,12 @@ impl<'a> FuncCtx<'a> {
 
     pub fn make_load(&mut self, src: ir::Value) -> ir::Value {
         let v = self.func.dfg_mut().new_value().load(src);
+        self.push_inst(v);
+        v
+    }
+
+    pub fn make_getelemptr(&mut self, src: ir::Value, index: ir::Value) -> ir::Value {
+        let v = self.func.dfg_mut().new_value().get_elem_ptr(src, index);
         self.push_inst(v);
         v
     }

@@ -24,7 +24,7 @@ fn emit_ast_lor(lor: &LOrExp, ctx: &mut FuncCtx) -> ir::Value {
     match lor {
         LOrExp::And(land) => emit_ast_land(land, ctx),
         LOrExp::Or(l, r) => {
-            let result_alloc = ctx.make_alloc(Some("%result".to_string()));
+            let result_alloc = ctx.make_alloc(ir::Type::get_i32(), Some("%result".to_string()));
             let bb_true = ctx.new_bb("%or_true");
             let bb_false = ctx.new_bb("%or_false");
             let bb_end = ctx.new_bb("%or_end");
@@ -55,7 +55,7 @@ fn emit_ast_land(land: &LAndExp, ctx: &mut FuncCtx) -> ir::Value {
             emit_ast_eq(eq, ctx)
         }
         LAndExp::And(l, r) => {
-            let result_alloc = ctx.make_alloc(Some("%result".to_string()));
+            let result_alloc = ctx.make_alloc(ir::Type::get_i32(), Some("%result".to_string()));
             
             let bb_true = ctx.new_bb("%and_true");
             let bb_false = ctx.new_bb("%and_false");

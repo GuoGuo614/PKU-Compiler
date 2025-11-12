@@ -86,14 +86,27 @@ ConstDefList: Vec<ConstDef> = {
   }
 };
 
-ConstDef: ConstDef = <ident: Ident> "=" <val: ConstInitVal> => ConstDef {
+ConstDef: ConstDef = <ident: Ident> <size: ("[" <ConstExp> "]")?> "=" <val: ConstInitVal> 
+=> ConstDef {
   ident,
+  size,
   const_val: val,
 };
 
-ConstInitVal: ConstInitVal = <ce: ConstExp> => ConstInitVal { const_exp: ce };
+ConstInitVal: ConstInitVal = {
+  <ce: ConstExp> => ConstInitVal::Var(ce),
+  "{" <vce: ConstExpList> "}" => ConstInitVal::Array(vce),
+};
 
 ConstExp: ConstExp = <exp: Exp> => ConstExp { exp };
+
+ConstExpList: Vec<ConstExp> = {
+  <first: ConstExp> <rest: ("," <ConstExp>)*> => {
+    let mut v = vec![first];
+    for e in rest { v.push(e); }
+    v
+  }
+}
 
 // VarDecl and VarDef
 VarDecl: VarDecl = <btype: TypeSpec> <defs: VarDefList> ";" => VarDecl {
@@ -110,11 +123,16 @@ VarDefList: Vec<VarDef> = {
 };
 
 VarDef: VarDef = {
-  <ident: Ident> "=" <init: InitVal> => VarDef::Init(ident, init),
-  <ident: Ident> => VarDef::Decl(ident),
+  <ident: Ident> <index: ("[" <ConstExp> "]")?> "=" <init: InitVal> 
+    => VarDef::Init(ident, index, init),
+  <ident: Ident> <index: ("[" <ConstExp> "]")?> 
+    => VarDef::Decl(ident, index),
 };
 
-InitVal: InitVal = <exp: Exp> => InitVal { exp };
+InitVal: InitVal = {
+  <exp: Exp> => InitVal::Var(exp),
+  "{" <exps: ExpList> "}" => InitVal::Array(exps),
+}
 
 // Block and items
 Block: Block = "{" <block_items: BlockItemList> "}" => Block { block_items };
@@ -159,6 +177,15 @@ Exp: Exp = <lor_exp: LOrExp> => Exp {
   lor_exp
 };
 
+ExpList: Vec<Exp> = {
+  => vec![],
+  <first: Exp> <rest: ("," <Exp>)*> => {
+    let mut v = vec![first];
+    for e in rest { v.push(e); }
+    v
+  }
+}
+
 UnaryExp: UnaryExp = {
   <primary_exp: PrimaryExp> => UnaryExp::Primary(primary_exp),
   <ident: Ident> "(" <rparams: FuncRParams?> ")" => UnaryExp::FuncCall(ident, rparams),
@@ -176,7 +203,8 @@ FuncRParams: FuncRParams = {
 };
 
 // LVal and PrimaryExp extension
-LVal: LVal = <ident: Ident> => LVal { ident };
+LVal: LVal = <ident: Ident> <index: ("[" <Exp> "]")?>
+  => LVal { ident, index: Box::new(index) };
 
 PrimaryExp: PrimaryExp = {
   "(" <exp: Exp> ")" => PrimaryExp::Paren(Box::new(exp)),
