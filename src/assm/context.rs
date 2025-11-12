@@ -32,9 +32,9 @@ impl<'a, W: Write> AsmCtx<'a, W> {
             .unwrap()
     }
 
-    pub fn is_global(&self, value: ir::Value) -> bool {
-        self.func.dfg().values().get(&value).is_none()
-    }
+    // pub fn is_global(&self, value: ir::Value) -> bool {
+    //     self.func.dfg().values().get(&value).is_none()
+    // }
     
     pub fn get_global_name(&self, value: ir::Value) -> String {
         let data = self.program.borrow_value(value);
