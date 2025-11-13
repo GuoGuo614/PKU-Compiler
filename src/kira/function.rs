@@ -5,8 +5,9 @@ use koopa::*;
 use crate::ast::*;
 use super::symbol::SymbolTable;
 use super::ctx::FuncCtx;
-use super::utils::{functype_parse_from_ast, params_type_parse};
+use super::utils::{functype_parse_from_ast, param_type_parse};
 use super::block::process_block;
+use super::const_eval::EvalConst;
 
 use koopa::{ir::builder::BasicBlockBuilder};
 
@@ -14,7 +15,7 @@ use koopa::{ir::builder::BasicBlockBuilder};
 pub fn process_func_def(func_def: &FuncDef, program: &mut ir::Program, global_sym: &mut SymbolTable) {
     let params_type: Vec<ir::Type> = func_def.params.as_ref()
         .map(|f_params| f_params.params.iter()
-            .map(|p| params_type_parse(&p.b_type))
+            .map(|p| param_type_parse(p))
             .collect())
         .unwrap_or_default();
 
@@ -57,9 +58,19 @@ fn parse_function_body(
         let param_values: Vec<_> = ctx.func.params().to_vec();
 
         for (param, &param_value) in f_params.params.iter().zip(&param_values) {
-            let alloc = ctx.make_alloc(ir::Type::get_i32(), None);
-            ctx.make_store(alloc, param_value);
-            ctx.sym.insert_var(&param.ident, alloc);
+            if let Some(ref index_list) = param.indexs {
+                // 提取维度信息
+                let mut sizes = vec![0];
+                for const_exp in index_list {
+                    let size = const_exp.exp.eval(ctx.sym) as usize;
+                    sizes.push(size);
+                }
+                ctx.sym.insert_array_pointer(&param.ident, param_value, sizes);
+            } else {
+                let alloc = ctx.make_alloc(ir::Type::get_i32(), None);
+                ctx.make_store(alloc, param_value);
+                ctx.sym.insert_var(&param.ident, alloc);
+            }
         }
     }
 

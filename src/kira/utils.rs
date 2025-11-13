@@ -13,10 +13,17 @@ pub fn functype_parse_from_ast(functype: &FuncType) -> ir::Type {
 }
 
 /// 将 AST 的参数类型转换为 Koopa IR 类型
-pub fn params_type_parse(param: &BType) -> ir::Type {
-    match param._type.as_str() {
-        "int" => ir::Type::get_i32(),
-        _  => panic!("Unknown function types.")
+/// 如果参数是数组，则转换为指针类型
+pub fn param_type_parse(param: &FuncFParam) -> ir::Type {
+    match param.b_type._type.as_str() {
+        "int" => {
+            if param.indexs.is_some() {
+                ir::Type::get_pointer(ir::Type::get_i32())
+            } else {
+                ir::Type::get_i32()
+            }
+        },
+        _ => panic!("Unknown parameter type: {}", param.b_type._type)
     }
 }
 

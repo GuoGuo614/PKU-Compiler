@@ -71,6 +71,7 @@ pub struct FuncFParams {
 pub struct FuncFParam {
   pub b_type: BType,
   pub ident: String,
+  pub indexs: Option<Vec<ConstExp>>,
 }
 
 pub struct Block {

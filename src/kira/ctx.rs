@@ -58,12 +58,28 @@ impl<'a> FuncCtx<'a> {
                 Some(self.make_load(alloc))
             },
             Sym::Array(alloc, sizes) => {
-                let offset = self.compute_array_offset(&index_vals, &sizes);
+                let (offset, is_ptr) = self.compute_array_offset(&index_vals, &sizes);
                 let ptr = self.make_getelemptr(alloc, offset);
-                Some(self.make_load(ptr))
-            }
+                if is_ptr {
+                    Some(ptr)
+                } else {
+                    Some(self.make_load(ptr))
+                }
+            },
+            Sym::ArrayPointer(ptr, sizes) => {
+                let (offset, is_ptr) = self.compute_array_offset(&index_vals, &sizes);
+                let elem_ptr = self.make_getptr(ptr, offset);
+                if is_ptr {
+                    Some(elem_ptr)
+                } else {
+                    Some(self.make_load(elem_ptr))
+                }
+            },
             Sym::Func(_) => {
                 panic!("Call a function without '()'!")
+            },
+            Sym::Pointer(alloc) => {
+                Some(alloc)
             }
         }
     }
@@ -82,19 +98,29 @@ impl<'a> FuncCtx<'a> {
                 Some(alloc)
             },
             Sym::Array(alloc, sizes) => {
-                let offset = self.compute_array_offset(&index_vals, &sizes);
+                let (offset, _) = self.compute_array_offset(&index_vals, &sizes);
                 let ptr = self.make_getelemptr(alloc, offset);
                 Some(ptr)
+            }
+            Sym::ArrayPointer(ptr, sizes) => {
+                let (offset, _) = self.compute_array_offset(&index_vals, &sizes);
+                let elem_ptr = self.make_getptr(ptr, offset);
+                Some(elem_ptr)
             }
             Sym::Func(_) => {
                 panic!("Call a function without '()'!")
             }
+            Sym::Pointer(alloc) => {
+                Some(alloc)
+            }
         }
     }
 
-    fn compute_array_offset(&mut self, index_vals: &[ir::Value], sizes: &[usize]) -> ir::Value {
-        if index_vals.is_empty() {
-            panic!("Array access without index");
+    fn compute_array_offset(&mut self, index_vals: &[ir::Value], sizes: &[usize]) 
+        -> (ir::Value, bool) {
+        let mut is_ptr = false;
+        if index_vals.len() != sizes.len() {
+            is_ptr = true;
         }
 
         let mut offset = self.make_int(0);
@@ -112,7 +138,7 @@ impl<'a> FuncCtx<'a> {
             // println!("Pass a compute");
         }
         
-        offset
+        (offset, is_ptr)
     }
 
     // 可以顺便设置一下变量名
@@ -168,6 +194,12 @@ impl<'a> FuncCtx<'a> {
 
     pub fn make_getelemptr(&mut self, src: ir::Value, index: ir::Value) -> ir::Value {
         let v = self.func.dfg_mut().new_value().get_elem_ptr(src, index);
+        self.push_inst(v);
+        v
+    }
+
+    pub fn make_getptr(&mut self, src: ir::Value, index: ir::Value) -> ir::Value {
+        let v = self.func.dfg_mut().new_value().get_ptr(src, index);
         self.push_inst(v);
         v
     }

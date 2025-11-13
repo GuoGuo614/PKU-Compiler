@@ -56,9 +56,20 @@ TypeSpec: String = {
 
 FuncFParams: FuncFParams = <params: TList<FuncFParam>> => FuncFParams { params };
 
-FuncFParam: FuncFParam = <b_type: TypeSpec> <ident: Ident> => FuncFParam {
-  b_type: BType { _type: b_type },
-  ident,
+// FuncFParam ::= BType IDENT ["[" "]" {"[" ConstExp "]"}];
+FuncFParam: FuncFParam = {
+  // 非数组参数：int x
+  <b_type: TypeSpec> <ident: Ident> => FuncFParam {
+    b_type: BType { _type: b_type },
+    ident,
+    indexs: None,
+  },
+  // 数组参数：int x[][3][4]
+  <b_type: TypeSpec> <ident: Ident> "[" "]" <dims: ("[" <ConstExp> "]")*> => FuncFParam {
+    b_type: BType { _type: b_type },
+    ident,
+    indexs: Some(dims),
+  },
 };
 
 // Declarations
