@@ -20,9 +20,8 @@ pub fn process_stmt(stmt: &Stmt, ctx: &mut FuncCtx) {
         Stmt::Assign(lval, exp) => {
             // 可优化：先尝试常量求值
             let rhs = emit_ast_exp(exp, ctx);
-            let alloc = ctx.sym.get_var(&lval.ident)
-                .expect("Variable not found");
-            ctx.make_store(*alloc, rhs);
+            let alloc = ctx.make_store_val(lval).unwrap();
+            ctx.make_store(alloc, rhs);
         },
         Stmt::Exp(Some(_exp)) => {
             // Do nothing currently. Later I will use it.

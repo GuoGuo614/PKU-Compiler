@@ -13,7 +13,16 @@ impl EvalConst for ConstExp {
     }
 }
 
+impl EvalConst for &ConstExp {
+    fn eval(&self, sym: &SymbolTable) -> i32 {
+        self.exp.eval(sym)
+    }
+}
+
 impl EvalConst for Exp {
+    fn eval(&self, sym: &SymbolTable) -> i32 { self.lor_exp.eval(sym) }
+}
+impl EvalConst for &Exp {
     fn eval(&self, sym: &SymbolTable) -> i32 { self.lor_exp.eval(sym) }
 }
 impl EvalConst for LOrExp {
@@ -89,6 +98,72 @@ impl EvalConst for PrimaryExp {
             PrimaryExp::Paren(e) => e.eval(sym),
             PrimaryExp::LVal(lv) => sym.get_const(&lv.ident).copied()
                 .expect("const not found, is that a variable?"),
+        }
+    }
+}
+
+pub trait ArrayFlatten {
+    type Scalar;
+    /// Check if this is a scalar value
+    fn is_scalar(&self) -> bool;
+    
+    /// Get the scalar value (panics if not scalar)
+    fn as_scalar(&self) -> &Self::Scalar;
+    
+    /// Check if this is an array
+    fn is_array(&self) -> bool;
+    
+    /// Get the array (panics if not array)
+    fn as_array(&self) -> &[Self] where Self: Sized;
+}
+
+impl ArrayFlatten for ConstInitVal {
+    type Scalar = ConstExp;
+
+    fn is_scalar(&self) -> bool {
+        matches!(self, ConstInitVal::Var(_))
+    }
+    
+    fn as_scalar(&self) -> &Self::Scalar {
+        match self {
+            ConstInitVal::Var(exp) => exp,
+            _ => panic!("Expected scalar"),
+        }
+    }
+    
+    fn is_array(&self) -> bool {
+        matches!(self, ConstInitVal::Array(_))
+    }
+    
+    fn as_array(&self) -> &[Self] {
+        match self {
+            ConstInitVal::Array(arr) => arr,
+            _ => panic!("Expected array"),
+        }
+    }
+}
+impl ArrayFlatten for InitVal {
+    type Scalar = Exp;
+
+    fn is_scalar(&self) -> bool {
+        matches!(self, InitVal::Var(_))
+    }
+    
+    fn as_scalar(&self) -> &Self::Scalar {
+        match self {
+            InitVal::Var(exp) => exp,
+            _ => panic!("Expected scalar"),
+        }
+    }
+    
+    fn is_array(&self) -> bool {
+        matches!(self, InitVal::Array(_))
+    }
+    
+    fn as_array(&self) -> &[Self] {
+        match self {
+            InitVal::Array(arr) => arr,
+            _ => panic!("Expected array"),
         }
     }
 }

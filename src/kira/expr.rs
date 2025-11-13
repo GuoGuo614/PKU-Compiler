@@ -198,6 +198,6 @@ fn emit_ast_primary(p: &PrimaryExp, ctx: &mut FuncCtx) -> ir::Value {
     match p {
         PrimaryExp::Number(n) => ctx.make_int(*n),
         PrimaryExp::Paren(e) => emit_ast_exp(e, ctx),
-        PrimaryExp::LVal(lval) => ctx.make_val(lval).unwrap()
+        PrimaryExp::LVal(lval) => ctx.make_load_val(lval).unwrap()
     }
 }

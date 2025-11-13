@@ -3,11 +3,12 @@ use std::rc::Rc;
 use koopa::ir as ir;
 use ir::{Value, Function};
 
+#[derive(Clone)]
 pub enum Sym {
     Const(i32),
     Var(Value),
     Func(Function),
-    Array(Value),
+    Array(Value, Vec<usize>),
 }
 
 pub struct SymbolTable {
@@ -54,13 +55,13 @@ impl SymbolTable {
             .insert(name.to_string(), Sym::Var(alloc));
     }
 
-    pub fn insert_array(&mut self, name: &str, alloc: Value) {
+    pub fn insert_array(&mut self, name: &str, alloc: Value, sizes: Vec<usize>) {
         if self.symbol_exist_current(name) {
             panic!("Symbol '{}' already exists in current scope!", name);
         }
         Rc::get_mut(self.scopes.back_mut().unwrap())
             .expect("No active scope")
-            .insert(name.to_string(), Sym::Array(alloc));
+            .insert(name.to_string(), Sym::Array(alloc, sizes));
     }
 
     pub fn insert_func(&mut self, name: &str, func: &Function) {

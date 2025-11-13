@@ -54,13 +54,7 @@ TypeSpec: String = {
     "void" => "void".to_string(),
 };
 
-FuncFParams: FuncFParams = {
-  <first: FuncFParam> <rest: ("," <FuncFParam>)*> => {
-    let mut params = vec![first];
-    for param in rest { params.push(param); }
-    FuncFParams { params }
-  }
-};
+FuncFParams: FuncFParams = <params: TList<FuncFParam>> => FuncFParams { params };
 
 FuncFParam: FuncFParam = <b_type: TypeSpec> <ident: Ident> => FuncFParam {
   b_type: BType { _type: b_type },
@@ -78,15 +72,9 @@ ConstDecl: ConstDecl = "const" <btype: TypeSpec> <defs: ConstDefList> ";" => Con
     const_defs: defs,
 };
 
-ConstDefList: Vec<ConstDef> = {
-  <first: ConstDef> <rest: ("," <ConstDef>)*> => {
-    let mut v = vec![first];
-    for d in rest { v.push(d); }
-    v
-  }
-};
+ConstDefList: Vec<ConstDef> = TList<ConstDef>;
 
-ConstDef: ConstDef = <ident: Ident> <size: ("[" <ConstExp> "]")?> "=" <val: ConstInitVal> 
+ConstDef: ConstDef = <ident: Ident> <size: ("[" <ConstExp> "]")*> "=" <val: ConstInitVal> 
 => ConstDef {
   ident,
   size,
@@ -95,18 +83,14 @@ ConstDef: ConstDef = <ident: Ident> <size: ("[" <ConstExp> "]")?> "=" <val: Cons
 
 ConstInitVal: ConstInitVal = {
   <ce: ConstExp> => ConstInitVal::Var(ce),
-  "{" <vce: ConstExpList> "}" => ConstInitVal::Array(vce),
+  "{" <vci: ConstInitValList> "}" => ConstInitVal::Array(vci),
 };
+
+ConstInitValList: Vec<ConstInitVal> = TListOpt<ConstInitVal>;
 
 ConstExp: ConstExp = <exp: Exp> => ConstExp { exp };
 
-ConstExpList: Vec<ConstExp> = {
-  <first: ConstExp> <rest: ("," <ConstExp>)*> => {
-    let mut v = vec![first];
-    for e in rest { v.push(e); }
-    v
-  }
-}
+ConstExpList: Vec<ConstExp> = TList<ConstExp>;
 
 // VarDecl and VarDef
 VarDecl: VarDecl = <btype: TypeSpec> <defs: VarDefList> ";" => VarDecl {
@@ -114,25 +98,21 @@ VarDecl: VarDecl = <btype: TypeSpec> <defs: VarDefList> ";" => VarDecl {
   var_defs: defs,
 };
 
-VarDefList: Vec<VarDef> = {
-  <first: VarDef> <rest: ("," <VarDef>)*> => {
-    let mut v = vec![first];
-    for d in rest { v.push(d); }
-    v
-  }
-};
+VarDefList: Vec<VarDef> = TList<VarDef>;
 
 VarDef: VarDef = {
-  <ident: Ident> <index: ("[" <ConstExp> "]")?> "=" <init: InitVal> 
+  <ident: Ident> <index: ("[" <ConstExp> "]")*> "=" <init: InitVal> 
     => VarDef::Init(ident, index, init),
-  <ident: Ident> <index: ("[" <ConstExp> "]")?> 
+  <ident: Ident> <index: ("[" <ConstExp> "]")*> 
     => VarDef::Decl(ident, index),
 };
 
 InitVal: InitVal = {
   <exp: Exp> => InitVal::Var(exp),
-  "{" <exps: ExpList> "}" => InitVal::Array(exps),
+  "{" <exps: InitValList> "}" => InitVal::Array(exps),
 }
+
+InitValList: Vec<InitVal> = TListOpt<InitVal>;
 
 // Block and items
 Block: Block = "{" <block_items: BlockItemList> "}" => Block { block_items };
@@ -177,14 +157,7 @@ Exp: Exp = <lor_exp: LOrExp> => Exp {
   lor_exp
 };
 
-ExpList: Vec<Exp> = {
-  => vec![],
-  <first: Exp> <rest: ("," <Exp>)*> => {
-    let mut v = vec![first];
-    for e in rest { v.push(e); }
-    v
-  }
-}
+ExpList: Vec<Exp> = TListOpt<Exp>;
 
 UnaryExp: UnaryExp = {
   <primary_exp: PrimaryExp> => UnaryExp::Primary(primary_exp),
@@ -194,16 +167,10 @@ UnaryExp: UnaryExp = {
   "!" <unary_exp: UnaryExp> => UnaryExp::Not(Box::new(unary_exp)),
 };
 
-FuncRParams: FuncRParams = {
-  <first: Exp> <rest: ("," <Exp>)*> => {
-    let mut params = vec![first];
-    for param in rest { params.push(param); }
-    FuncRParams { params }
-  }
-};
+FuncRParams: FuncRParams = <params: TList<Exp>> => FuncRParams { params };
 
 // LVal and PrimaryExp extension
-LVal: LVal = <ident: Ident> <index: ("[" <Exp> "]")?>
+LVal: LVal = <ident: Ident> <index: ("[" <Exp> "]")*>
   => LVal { ident, index: Box::new(index) };
 
 PrimaryExp: PrimaryExp = {
@@ -262,3 +229,18 @@ IntConst: i32 = {
   r"0[0-7]*" => i32::from_str_radix(<>, 8).unwrap(),
   r"0[xX][0-9a-fA-F]+" => i32::from_str_radix(&<>[2..], 16).unwrap(),
 }
+
+// 泛型非终结符：以逗号连接元素
+TList<T>: Vec<T> = {
+  <first: T> <rest: ("," <T>)*> => {
+    let mut v = vec![first];
+    for d in rest { v.push(d); }
+    v
+  }
+};
+
+// 可选的列表（可以为空）
+TListOpt<T>: Vec<T> = {
+  => vec![],
+  <list: TList<T>> => list,
+};

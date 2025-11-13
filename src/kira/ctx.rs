@@ -42,32 +42,77 @@ impl<'a> FuncCtx<'a> {
         self.func.dfg_mut().new_value().integer(v)
     }
 
-    pub fn make_val(&mut self, v: &LVal) -> Option<ir::Value> {
+    pub fn make_load_val(&mut self, v: &LVal) -> Option<ir::Value> {
         // Evaluate index expression first (if any) to avoid borrowing self.sym
         // immutably while we later need a mutable borrow for emitting code.
-        let index_val_opt = if let Some(index) = &v.index.as_ref() {
-            Some(emit_ast_exp(index, self))
-        } else {
-            None
-        };
+        let index_vals: Vec<ir::Value> = v.index.iter()
+            .map(|index| emit_ast_exp(index, self))
+            .collect();
 
-        let sym = self.sym.get_all_sym(&v.ident).expect("Symbol not found");
+        let sym = self.sym.get_all_sym(&v.ident).expect("Symbol not found").clone();
         match sym {
             Sym::Const(number) => {
-                Some(self.func.dfg_mut().new_value().integer(*number))
+                Some(self.func.dfg_mut().new_value().integer(number))
             },
             Sym::Var(alloc) => {
-                Some(self.make_load(*alloc))
+                Some(self.make_load(alloc))
             },
-            Sym::Array(alloc) => {
-                let index_val = index_val_opt.expect("Array access without index");
-                let target = self.make_getelemptr(*alloc, index_val);
-                Some(self.make_load(target))
+            Sym::Array(alloc, sizes) => {
+                let offset = self.compute_array_offset(&index_vals, &sizes);
+                let ptr = self.make_getelemptr(alloc, offset);
+                Some(self.make_load(ptr))
             }
             Sym::Func(_) => {
                 panic!("Call a function without '()'!")
             }
         }
+    }
+
+    pub fn make_store_val(&mut self, v: &LVal) -> Option<ir::Value> {
+        let index_vals: Vec<ir::Value> = v.index.iter()
+            .map(|index| emit_ast_exp(index, self))
+            .collect();
+
+        let sym = self.sym.get_all_sym(&v.ident).expect("Symbol not found").clone();
+        match sym {
+            Sym::Const(_) => {
+                panic!("Store to an int?");
+            },
+            Sym::Var(alloc) => {
+                Some(alloc)
+            },
+            Sym::Array(alloc, sizes) => {
+                let offset = self.compute_array_offset(&index_vals, &sizes);
+                let ptr = self.make_getelemptr(alloc, offset);
+                Some(ptr)
+            }
+            Sym::Func(_) => {
+                panic!("Call a function without '()'!")
+            }
+        }
+    }
+
+    fn compute_array_offset(&mut self, index_vals: &[ir::Value], sizes: &[usize]) -> ir::Value {
+        if index_vals.is_empty() {
+            panic!("Array access without index");
+        }
+
+        let mut offset = self.make_int(0);
+        
+        for (dim, &index_val) in index_vals.iter().enumerate() {
+            let step: usize = sizes[(dim + 1)..].iter().product();
+            
+            if step > 1 {
+                let step_val = self.make_int(step as i32);
+                let contribution = self.emit_binary(ir::BinaryOp::Mul, index_val, step_val);
+                offset = self.emit_binary(ir::BinaryOp::Add, offset, contribution);
+            } else {
+                offset = self.emit_binary(ir::BinaryOp::Add, offset, index_val);
+            }
+            // println!("Pass a compute");
+        }
+        
+        offset
     }
 
     // 可以顺便设置一下变量名
@@ -87,24 +132,26 @@ impl<'a> FuncCtx<'a> {
         &mut self, 
         array_name: Option<String>, 
         size: usize,
-        exps: &[T],
+        exps: &[Option<&T>],
     ) -> ir::Value {
         let array = self.make_array_alloc(array_name, size);
-        for (index, exp) in exps.iter().enumerate() {
-            let index = self.make_int(index as i32);
-            let index_alloc = self.make_getelemptr(array, index);
-            let value = exp.eval(self.sym);
-            let val = self.make_int(value);
-            self.make_store(index_alloc, val);
+        
+        // 只初始化有值的部分
+        let zero = self.make_int(0);
+        for (i, exp_opt) in exps.iter().enumerate() {
+            let index_val = self.make_int(i as i32);
+            let ptr = self.make_getelemptr(array, index_val);
+            
+            let val = if let Some(exp) = exp_opt {
+                let value = exp.eval(self.sym);
+                self.make_int(value)
+            } else {
+                zero
+            };
+            
+            self.make_store(ptr, val);
         }
-        if exps.len() < size {
-            let zero = self.make_int(0);
-            for i in exps.len()..size {
-                let index_val = self.make_int(i as i32);
-                let index_alloc = self.make_getelemptr(array, index_val);
-                self.make_store(index_alloc, zero);
-            }
-        }
+        
         array
     }
 
