@@ -66,7 +66,9 @@ impl<'a> FuncCtx<'a> {
                     Some(self.make_load(ptr))
                 }
             },
-            Sym::ArrayPointer(ptr, sizes) => {
+            Sym::ArrayPointer(src, sizes) => {
+                // src 是 **i32，需要先 load 得到 *i32
+                let ptr = self.make_load(src);
                 let (offset, is_ptr) = self.compute_array_offset(&index_vals, &sizes);
                 let elem_ptr = self.make_getptr(ptr, offset);
                 if is_ptr {
@@ -102,7 +104,9 @@ impl<'a> FuncCtx<'a> {
                 let ptr = self.make_getelemptr(alloc, offset);
                 Some(ptr)
             }
-            Sym::ArrayPointer(ptr, sizes) => {
+            Sym::ArrayPointer(src, sizes) => {
+                // src 是 **i32，需要先 load 得到 *i32
+                let ptr = self.make_load(src);
                 let (offset, _) = self.compute_array_offset(&index_vals, &sizes);
                 let elem_ptr = self.make_getptr(ptr, offset);
                 Some(elem_ptr)

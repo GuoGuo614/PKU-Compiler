@@ -58,16 +58,19 @@ fn parse_function_body(
         let param_values: Vec<_> = ctx.func.params().to_vec();
 
         for (param, &param_value) in f_params.params.iter().zip(&param_values) {
+            let var_name = format!("%{}", param.ident);
             if let Some(ref index_list) = param.indexs {
-                // 提取维度信息
+                // 数组参数：需要 alloc **i32 并 store
                 let mut sizes = vec![0];
                 for const_exp in index_list {
                     let size = const_exp.exp.eval(ctx.sym) as usize;
                     sizes.push(size);
                 }
-                ctx.sym.insert_array_pointer(&param.ident, param_value, sizes);
+                let alloc = ctx.make_alloc(ir::Type::get_pointer(ir::Type::get_i32()), Some(var_name));
+                ctx.make_store(alloc, param_value);
+                ctx.sym.insert_array_pointer(&param.ident, alloc, sizes);
             } else {
-                let alloc = ctx.make_alloc(ir::Type::get_i32(), None);
+                let alloc = ctx.make_alloc(ir::Type::get_i32(), Some(var_name));
                 ctx.make_store(alloc, param_value);
                 ctx.sym.insert_var(&param.ident, alloc);
             }
