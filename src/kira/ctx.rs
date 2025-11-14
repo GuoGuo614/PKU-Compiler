@@ -24,7 +24,8 @@ pub struct LoopContext {
 
 impl<'a> FuncCtx<'a> {
     pub fn gen_bb_name(&mut self, prefix: &str) -> String {
-        let name = format!("{}{}", prefix, self.bb_counter);
+        let func_name = self.func.name().strip_prefix("@").unwrap();
+        let name = format!("{}_{}_{}", prefix, func_name, self.bb_counter);
         self.bb_counter += 1;
         name
     }

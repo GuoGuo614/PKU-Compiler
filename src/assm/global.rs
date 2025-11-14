@@ -1,6 +1,6 @@
 use std::io::Write;
 use koopa::ir::{self, ValueKind};
-use super::{AsmCtx, utils::func_is_decl};
+use super::{AsmCtx, utils::func_is_decl, utils::calculate_type_size};
 
 pub fn emit_data_section<W: Write>(program: &ir::Program, w: &mut W) {
     let global_vars: Vec<_> = program.inst_layout()
@@ -35,7 +35,8 @@ fn emit_global_var<W: Write>(program: &ir::Program, w: &mut W, val: &ir::Value) 
                 writeln!(w, "\t.word {}", int.value()).unwrap();
             },
             ValueKind::ZeroInit(_) => {
-                writeln!(w, "\t.zero 4").unwrap();
+                let size = calculate_type_size(init_data.ty());
+                writeln!(w, "\t.zero {}", size).unwrap();
             },
             ValueKind::Aggregate(aggregate) => {
                 let vals = aggregate.elems();

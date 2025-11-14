@@ -2,6 +2,7 @@ use std::io::Write;
 use koopa::ir::ValueKind;
 use super::AsmCtx;
 use super::ir;
+use super::utils::calculate_type_size;
 
 static PARAM_REGS: [&str; 8] = ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"];
 
@@ -17,7 +18,8 @@ impl<'a, W: Write> AsmCtx<'a, W> {
             ValueKind::Branch(branch) => self.emit_branch(branch),
             ValueKind::Jump(jump) => self.emit_jump(jump),
             ValueKind::Call(call) => self.emit_call(inst, call),
-            ValueKind::GetElemPtr(get_ptr) => self.emit_get_ptr(inst, get_ptr),
+            ValueKind::GetElemPtr(get_ptr) => self.emit_get_elem_ptr(inst, get_ptr),
+            ValueKind::GetPtr(get_ptr) => self.emit_get_ptr(inst, get_ptr),
             _ => panic!("Unsupported value kind: {:?}", v.kind()),
         }
     }
@@ -44,7 +46,13 @@ impl<'a, W: Write> AsmCtx<'a, W> {
             self.specific_reg_for(v, "a0");
         }
         if self.has_call {
-            writeln!(self.w, "\tlw ra, {}(sp)", self.sf.total - 4).unwrap();
+            if self.sf.total - 4 < 2048 {
+                writeln!(self.w, "\tlw ra, {}(sp)", self.sf.total - 4).unwrap();
+            } else {
+                writeln!(self.w, "\tli t0, {}", self.sf.total - 4).unwrap();
+                writeln!(self.w, "\tadd t0, sp, t0").unwrap();
+                writeln!(self.w, "\tlw ra, 0(t0)",).unwrap();
+            }
         }
         if self.sf.total > 0 && self.sf.total < 2048 {
             writeln!(self.w, "\taddi sp, sp, {}", self.sf.total).unwrap();
@@ -56,33 +64,52 @@ impl<'a, W: Write> AsmCtx<'a, W> {
     }
 
     fn emit_alloc(&mut self, inst: ir::Value) {
-        self.sf.alloc_slot(inst);
+        let alloc_data = self.func.dfg().value(inst);
+
+        if let ValueKind::Alloc(_) = alloc_data.kind() {
+            let ty = alloc_data.ty();
+            
+            if let ir::TypeKind::Pointer(base_ty) = ty.kind() {
+                if base_ty.is_i32() {
+                    self.sf.alloc_slot(inst);
+                } else {
+                    let size = calculate_type_size(base_ty); 
+                    println!("alloc an array! size = {}", size);
+                    self.sf.alloc_array(inst, size);
+                }
+            }
+        } else {
+            panic!("emit_alloc called on non-alloc instruction");
+        }
     }
 
     fn emit_load(&mut self, inst: ir::Value, load: &ir::values::Load) {
         let src = load.src();
         let rd = self.ra.alloc();
         
-        let src_kind = self.func.dfg().value(src).kind();
-        
-        match src_kind {
-            ValueKind::GlobalAlloc(_) => {
-                let var_name = self.get_global_name(src);
-                writeln!(self.w, "\tla {}, {}", rd, var_name).unwrap();
-                writeln!(self.w, "\tlw {}, 0({})", rd, rd).unwrap();
-            },
-            ValueKind::Alloc(_) => {
-                let src_offset = self.sf.get_slot(&src);
-                self.load_from_stack_to(rd, src_offset);
-            },
-            ValueKind::GetElemPtr(_) | ValueKind::GetPtr(_) => {
-                let ptr_offset = self.sf.get_slot(&src);
-                let ptr_reg = self.ra.alloc();
-                self.load_from_stack_to(ptr_reg, ptr_offset);
-                writeln!(self.w, "\tlw {}, 0({})", rd, ptr_reg).unwrap();
-                self.ra.release(ptr_reg);
-            },
-            _ => panic!("Unexpected load source: {:?}", src_kind),
+        if self.is_global(src) {
+            let var_name = self.get_global_name(src);
+            writeln!(self.w, "\tla {}, {}", rd, var_name).unwrap();
+            writeln!(self.w, "\tlw {}, 0({})", rd, rd).unwrap();
+        } else {
+            let src_kind = self.func.dfg().value(src).kind();
+            match src_kind {
+                ValueKind::GlobalAlloc(_) => {
+                    panic!("A global alloc in function?");
+                },
+                ValueKind::Alloc(_) => {
+                    let src_offset = self.sf.get_slot(&src);
+                    self.load_from_stack_to(rd, src_offset);
+                },
+                ValueKind::GetElemPtr(_) | ValueKind::GetPtr(_) => {
+                    let ptr_offset = self.sf.get_slot(&src);
+                    let ptr_reg = self.ra.alloc();
+                    self.load_from_stack_to(ptr_reg, ptr_offset);
+                    writeln!(self.w, "\tlw {}, 0({})", rd, ptr_reg).unwrap();
+                    self.ra.release(ptr_reg);
+                },
+                _ => panic!("Unexpected load source: {:?}", src_kind),
+            }
         }
         
         let dst_offset = self.sf.alloc_slot(inst);
@@ -95,28 +122,33 @@ impl<'a, W: Write> AsmCtx<'a, W> {
         let dst = store.dest();
         let rval = self.reg_for(val);
 
-        let dst_kind = self.func.dfg().value(dst).kind();
-        match dst_kind {
-            ValueKind::GlobalAlloc(_) => {
-                let var_name = self.get_global_name(dst);
-                let addr_reg = self.ra.alloc();
-                writeln!(self.w, "\tla {}, {}", addr_reg, var_name).unwrap();
-                writeln!(self.w, "\tsw {}, 0({})", rval, addr_reg).unwrap();
-                self.ra.release(addr_reg);
-            },
-            ValueKind::Alloc(_) => {
-                let dst_offset = self.sf.get_slot(&dst);
-                self.store_to_stack(rval, dst_offset);
-            },
-            ValueKind::GetElemPtr(_) | ValueKind::GetPtr(_) => {
-                let ptr_offset = self.sf.get_slot(&dst);
-                let ptr_reg = self.ra.alloc();
-                self.load_from_stack_to(ptr_reg, ptr_offset);
-                writeln!(self.w, "\tsw {}, 0({})", rval, ptr_reg).unwrap();
-                self.ra.release(ptr_reg);
-            },
-            _ => panic!("Unexpected store destination: {:?}", dst_kind),
+        if self.is_global(dst) {
+            let var_name = self.get_global_name(dst);
+            let addr_reg = self.ra.alloc();
+            writeln!(self.w, "\tla {}, {}", addr_reg, var_name).unwrap();
+            writeln!(self.w, "\tsw {}, 0({})", rval, addr_reg).unwrap();
+            self.ra.release(addr_reg);
+        } else {
+            let dst_kind = self.func.dfg().value(dst).kind();
+            match dst_kind {
+                ValueKind::GlobalAlloc(_) => {
+                    panic!("A global alloc in function?");
+                },
+                ValueKind::Alloc(_) => {
+                    let dst_offset = self.sf.get_slot(&dst);
+                    self.store_to_stack(rval, dst_offset);
+                },
+                ValueKind::GetElemPtr(_) | ValueKind::GetPtr(_) => {
+                    let ptr_offset = self.sf.get_slot(&dst);
+                    let ptr_reg = self.ra.alloc();
+                    self.load_from_stack_to(ptr_reg, ptr_offset);
+                    writeln!(self.w, "\tsw {}, 0({})", rval, ptr_reg).unwrap();
+                    self.ra.release(ptr_reg);
+                },
+                _ => panic!("Unexpected store destination: {:?}", dst_kind),
+            }
         }
+        
         
         self.ra.dec_use(val);
     }
@@ -165,18 +197,59 @@ impl<'a, W: Write> AsmCtx<'a, W> {
         }
     }
 
-    fn emit_get_ptr(&mut self, inst: ir::Value, get_ptr: &ir::values::GetElemPtr) {
+    fn is_global(&self, src: ir::Value) -> bool {
+        !self.func.dfg().values().contains_key(&src)
+    }
+
+    fn emit_get_elem_ptr(&mut self, inst: ir::Value, get_ptr: &ir::values::GetElemPtr) {
         let src = get_ptr.src();
         let index = get_ptr.index();
 
-        let offset = self.sf.get_slot(&src);
         let reg_base = self.ra.alloc();
-        if offset <= 2047 {
-            writeln!(self.w, "\taddi {}, sp, {}", reg_base, offset).unwrap();
+        if !self.is_global(src) {
+            let offset = self.sf.get_slot(&src);
+            if offset <= 2047 {
+                writeln!(self.w, "\taddi {}, sp, {}", reg_base, offset).unwrap();
+            } else {
+                writeln!(self.w, "\tli {}, {}", reg_base, offset).unwrap();
+                writeln!(self.w, "\tadd {}, sp, {}", reg_base, reg_base).unwrap();
+            }
         } else {
-            writeln!(self.w, "\tli {}, {}", reg_base, offset).unwrap();
-            writeln!(self.w, "\tadd {}, sp, {}", reg_base, reg_base).unwrap();
+            let src_data = self.program.borrow_value(src);
+            let name = src_data.name()
+                .as_ref()
+                .unwrap()
+                .strip_prefix('@')
+                .unwrap();
+            writeln!(self.w, "\tla {}, {}", reg_base, name).unwrap();
         }
+
+        let reg_index = self.reg_for(index);
+        let reg_size = self.ra.alloc();
+        writeln!(self.w, "\tli {}, 4", reg_size).unwrap();
+        writeln!(self.w, "\tmul {}, {}, {}", reg_size, reg_index, reg_size).unwrap();
+        let reg_offset = reg_size;
+
+        writeln!(self.w, "\tadd {}, {}, {}", reg_base, reg_base, reg_offset).unwrap();
+        let reg_result = reg_base;
+
+        let dst_offset = self.sf.alloc_slot(inst);
+        self.store_to_stack(reg_result, dst_offset);
+
+        self.ra.release(reg_result);
+        self.ra.release(reg_offset);
+        self.ra.dec_use(index);
+    }
+
+    fn emit_get_ptr(&mut self, inst: ir::Value, get_ptr: &ir::values::GetPtr) {
+        let src = get_ptr.src();
+        let index = get_ptr.index();
+
+        let src_offset = self.sf.get_slot(&src);
+        let reg_base = self.ra.alloc();
+        
+        self.load_from_stack_to(reg_base, src_offset);
+        
         let reg_index = self.reg_for(index);
         let reg_size = self.ra.alloc();
         writeln!(self.w, "\tli {}, 4", reg_size).unwrap();
@@ -266,7 +339,11 @@ impl<'a, W: Write> AsmCtx<'a, W> {
                     let offset = (index - 8) * 4 + self.sf.total;
                     self.load_from_stack(v, offset)
                 }
-            }
+            },
+            ValueKind::GetElemPtr(_) | ValueKind::GetPtr(_) => {
+                let offset = self.sf.get_slot(&v);
+                self.load_from_stack(v, offset)
+            },
             _ => panic!("Operand not in register and not an immediate"),
         }
     }
@@ -295,7 +372,11 @@ impl<'a, W: Write> AsmCtx<'a, W> {
                     let offset = (index - 8) * 4 + self.sf.total;
                     self.load_from_stack_to(reg, offset);
                 }
-            }
+            },
+            ValueKind::GetElemPtr(_) | ValueKind::GetPtr(_) => {
+                let offset = self.sf.get_slot(&v);
+                self.load_from_stack_to(reg, offset);
+            },
             _ => panic!("Operand not in register and not an immediate"),
         }
     }

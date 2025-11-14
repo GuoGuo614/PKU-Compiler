@@ -84,7 +84,8 @@ fn parse_function_body(
             FuncType::Void => {
                 ctx.emit_ret(None);
             },
-            _ => panic!("Miss a Return Statement!"),
+            // _ => panic!("Miss a Return Statement!"),
+            _ => {}
         }
     }
 }

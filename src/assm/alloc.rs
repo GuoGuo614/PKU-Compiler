@@ -47,6 +47,7 @@ pub struct StackFrame {
     pub total: usize,
     pub params_base: usize,
     allocs: HashMap<ir::Value, usize>,
+    current_offset: usize,
 }
 
 impl StackFrame {
@@ -55,11 +56,31 @@ impl StackFrame {
             total: 0,
             params_base: 0,
             allocs: HashMap::new(),
+            current_offset: 0,
         }
     }
 
     pub fn alloc_slot(&mut self, v: ir::Value) -> usize {
-        let offset = self.params_base + self.allocs.len() * 4;
+        // if let Some(&offset) = self.allocs.get(&v) {
+        //     eprintln!("REUSE: {:?} -> offset {}", v, offset);
+        //     return offset;
+        // }
+
+        let offset = self.params_base + self.current_offset;
+        self.current_offset += 4;
+        println!("current offset of sp: {}", self.current_offset);
+        self.allocs.insert(v, offset);
+        offset
+    }
+
+    pub fn alloc_array(&mut self, v: ir::Value, size: usize) -> usize {
+        // if let Some(&offset) = self.allocs.get(&v) {
+        //     return offset;
+        // }
+        
+        let offset = self.params_base + self.current_offset;
+        self.current_offset += size;
+        println!("current offset of sp: {}", self.current_offset);
         self.allocs.insert(v, offset);
         offset
     }
