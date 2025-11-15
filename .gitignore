@@ -10,3 +10,4 @@ hello.o
 /target
 gpt.rs
 /.devcontainer
+/_legacy
