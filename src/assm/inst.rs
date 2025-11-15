@@ -74,7 +74,7 @@ impl<'a, W: Write> AsmCtx<'a, W> {
                     self.sf.alloc_slot(inst);
                 } else {
                     let size = calculate_type_size(base_ty); 
-                    println!("alloc an array! size = {}", size);
+                    // println!("alloc an array! size = {}", size);
                     self.sf.alloc_array(inst, size);
                 }
             }

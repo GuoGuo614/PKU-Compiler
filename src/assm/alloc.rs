@@ -68,7 +68,7 @@ impl StackFrame {
 
         let offset = self.params_base + self.current_offset;
         self.current_offset += 4;
-        println!("current offset of sp: {}", self.current_offset);
+        // println!("current offset of sp: {}", self.current_offset);
         self.allocs.insert(v, offset);
         offset
     }
@@ -80,7 +80,7 @@ impl StackFrame {
         
         let offset = self.params_base + self.current_offset;
         self.current_offset += size;
-        println!("current offset of sp: {}", self.current_offset);
+        // println!("current offset of sp: {}", self.current_offset);
         self.allocs.insert(v, offset);
         offset
     }

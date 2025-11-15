@@ -279,7 +279,7 @@ impl<'a> FuncCtx<'a> {
     }
 
     // 判断一个值是否已经是 bool，好像没用啊
-    pub fn _is_bool(&mut self, v: ir::Value) -> bool {
+    pub fn is_bool(&mut self, v: ir::Value) -> bool {
         use koopa::ir::ValueKind;
         let kind = self.func.dfg().value(v).kind();
         match kind {

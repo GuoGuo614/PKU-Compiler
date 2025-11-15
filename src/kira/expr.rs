@@ -10,8 +10,9 @@ pub fn emit_ast_exp(exp: &Exp, ctx: &mut FuncCtx) -> ir::Value {
 }
 
 /// 将整数转为布尔代数，好像没用啊
-fn _to_bool(ctx: &mut FuncCtx, v: ir::Value) -> ir::Value {
-    if ctx._is_bool(v) {
+/// 有用的兄弟有用的
+fn to_bool(ctx: &mut FuncCtx, v: ir::Value) -> ir::Value {
+    if ctx.is_bool(v) {
         return v;
     }
     let zero = ctx.make_int(0);
@@ -39,8 +40,8 @@ fn emit_ast_lor(lor: &LOrExp, ctx: &mut FuncCtx) -> ir::Value {
             
             ctx.switch_to_bb(bb_false);
             let rv = emit_ast_land(r, ctx);
-            // let rv_bool = to_bool(ctx, rv);
-            ctx.make_store(result_alloc, rv);
+            let rv_bool = to_bool(ctx, rv);
+            ctx.make_store(result_alloc, rv_bool);
             ctx.make_jump(bb_end);
 
             ctx.switch_to_bb(bb_end);
@@ -66,8 +67,8 @@ fn emit_ast_land(land: &LAndExp, ctx: &mut FuncCtx) -> ir::Value {
             
             ctx.switch_to_bb(bb_true);
             let rv = emit_ast_eq(r, ctx);
-            // let rv_bool = to_bool(ctx, rv);
-            ctx.make_store(result_alloc, rv);
+            let rv_bool = to_bool(ctx, rv);
+            ctx.make_store(result_alloc, rv_bool);
             ctx.make_jump(bb_end);
             
             ctx.switch_to_bb(bb_false);

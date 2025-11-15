@@ -84,8 +84,11 @@ fn parse_function_body(
             FuncType::Void => {
                 ctx.emit_ret(None);
             },
+            FuncType::Int => {
+                let v = ctx.make_int(0);
+                ctx.emit_ret(Some(v));
+            }
             // _ => panic!("Miss a Return Statement!"),
-            _ => {}
         }
     }
 }
